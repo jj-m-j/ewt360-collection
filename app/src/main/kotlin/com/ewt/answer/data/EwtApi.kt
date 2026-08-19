@@ -309,7 +309,7 @@ object EwtEndpoints {
             EwtApi.courseHeaders(),
         ).unwrapArray("data")
 
-    // ── 提交链路（EWT-TOOL-main paperFiller 流程） ──────────────
+    // ── 提交链路（EWT-TOOL-main paperFiller / opt.js 流程） ──────
 
     /** 上报作答时长 / 空交卷（JS updateReport，解锁答案用） */
     suspend fun updateReport(paperId: String, reportId: String, platform: String, bizCode: String): JsonObject =
@@ -325,13 +325,14 @@ object EwtEndpoints {
             },
         )
 
-    /** 提交答案（选择题答案 / 非选择题自批项） */
+    /** 提交答案（选择题答案 / 非选择题自批项；body 对齐 opt.js：含 homeworkId） */
     suspend fun submitAnswer(
         paperId: String,
         reportId: String,
         platform: String,
         bizCode: String,
         answers: JsonArray,
+        homeworkId: String = "0",
     ): JsonObject =
         EwtApi.postJson(
             "${EwtApi.BASE}/api/answerprod/web/answer/submitAnswer",
@@ -342,6 +343,7 @@ object EwtEndpoints {
                 put("paperId", paperId)
                 put("platform", platform)
                 put("reportId", reportId)
+                put("homeworkId", homeworkId)
             },
         )
 
