@@ -80,8 +80,9 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
     }
 
     /**
-     * 扫描单个作业下所有带 paperId 的任务（试卷 / 课后习题等）。
-     * 不做 contentTypeName 过滤：只要 contentUrl 中含 paperId 就收录。
+     * 扫描单个作业下所有 contentUrl 带 paperId= 的任务（试卷 / 课后习题）。
+     * 仅收录真实试卷：contentUrl 中必须出现 paperId= 参数，
+     * 视频课等（courseId/lessonId）不会误收录。
      */
     suspend fun scanHomeworkPapers(schoolId: String, homework: HomeworkItem): List<Paper> {
         val papers = mutableListOf<Paper>()
@@ -102,7 +103,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                         val typeName = task.str("contentTypeName").orEmpty()
                         val paperId = extractPaperId(task)
                         if (paperId == null) {
-                            DebugLog.d("Scan", "无 paperId 跳过: type=$typeName title=${task.str("title")}")
+                            DebugLog.d("Scan", "非试卷任务跳过: type=$typeName title=${task.str("title")}")
                             continue
                         }
                         val count = task.str("questionCount")
@@ -111,7 +112,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                             ?: task.str("totalCount")
                             ?: task.str("count")
                             ?: "?"
-                        // 记录任务关键字段，便于定位“答案串台/题数缺失”
                         DebugLog.d(
                             "Scan",
                             "收录: type=$typeName title=${task.str("title")} paperId=$paperId count=$count " +
@@ -160,10 +160,13 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         return groups
     }
 
+    /**
+     * 提取真实 paperId：仅从 contentUrl 的 paperId= 参数提取。
+     * 不再回退 contentId（视频课等任务的 contentId 是课程/课时 ID，会导致答案串台）。
+     */
     private fun extractPaperId(task: JsonObject): String? {
         val url = task.str("contentUrl").orEmpty()
-        Regex("paperId=([^&]+)").find(url)?.let { return it.groupValues[1] }
-        return task.str("contentId")
+        return Regex("paperId=([^&]+)").find(url)?.groupValues?.get(1)
     }
 
     private fun formatDate(ts: Long): String {
@@ -178,20 +181,21 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     // ── 试卷会话 / 题目 ─────────────────────────────────────────
 
-    /** 打开试卷：多候选初始化 report，返回 (reportId, bizCode)。 */
+    /** 打开试卷：多候选初始化 report，返回会话（含真实题数）。 */
     suspend fun openPaper(paper: Paper): PaperSession {
-        val (reportId, bizCode) = initReportId(paper)
+        val (reportId, bizCode, count) = initReportId(paper)
         return PaperSession(
             paperId = paper.paperId,
             platform = EwtApi.PLATFORM,
             bizCode = bizCode,
             reportId = reportId,
             title = paper.title,
+            questionCount = count,
         )
     }
 
-    /** 初始化 report：多候选探测（205 带参 → 205 重试 → 205 无参 → 201 查看态） */
-    private suspend fun initReportId(paper: Paper): Pair<String, String> {
+    /** 初始化 report：多候选探测，返回 (reportId, bizCode, questionCount) */
+    private suspend fun initReportId(paper: Paper): Triple<String, String, Int> {
         val extId = paper.homeworkId
         val attempts = listOf(
             Triple("205+ext$extId+rep0", EwtApi.BIZ_SUBMIT, suspend { EwtEndpoints.initReport(paper.paperId, EwtApi.PLATFORM, EwtApi.BIZ_SUBMIT, extId, 0) }),
@@ -200,15 +204,18 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
             Triple("201+view", EwtApi.BIZ_VIEW, suspend { EwtEndpoints.getReportIdView(paper.paperId, EwtApi.PLATFORM, EwtApi.BIZ_VIEW) }),
         )
         for ((label, biz, call) in attempts) {
-            val id = runCatching {
-                val data = call().optObj("data")
-                data?.str("reportId") ?: data?.str("report") ?: data?.str("id")
-            }.onFailure { e ->
-                DebugLog.e("Init", "候选[$label] 失败 paperId=${paper.paperId}", e)
-            }.getOrNull()
-            if (id != null) {
-                DebugLog.d("Init", "候选[$label] 成功 reportId=$id paperId=${paper.paperId}")
-                return id to biz
+            val result = runCatching { call().optObj("data") }
+                .onFailure { e ->
+                    DebugLog.e("Init", "候选[$label] 失败 paperId=${paper.paperId}", e)
+                }
+                .getOrNull()
+            if (result != null) {
+                val id = result.str("reportId") ?: result.str("report") ?: result.str("id")
+                if (id != null) {
+                    val count = result.intOr("questionCount", 0)
+                    DebugLog.d("Init", "候选[$label] 成功 reportId=$id count=$count paperId=${paper.paperId}")
+                    return Triple(id, biz, count)
+                }
             }
         }
         throw EwtException("初始化答卷失败：无 reportId（已尝试 4 种方式，详见日志）")
