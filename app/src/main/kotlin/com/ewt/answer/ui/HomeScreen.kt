@@ -52,6 +52,7 @@ fun HomeScreen(
     onOpenPaper: (Paper) -> Unit,
     onOpenLinkQuery: () -> Unit,
     onOpenDebug: () -> Unit,
+    onLogout: () -> Unit,
 ) {
     val vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
     val uiState by vm.uiState.collectAsState()
@@ -70,7 +71,7 @@ fun HomeScreen(
                 title = "试卷列表",
                 subtitle = userInfo?.realName?.let { "你好，$it" } ?: "",
                 navigationIcon = {
-                    TextButton(text = "刷新", onClick = { vm.load(force = true) })
+                    TextButton(text = "退出登录", onClick = onLogout)
                 },
                 actions = {
                     TextButton(text = "调试模式", onClick = onOpenDebug)
@@ -145,7 +146,7 @@ fun HomeScreen(
                     }
                     HomeViewModel.UiState.Empty -> {
                         item(key = "empty") {
-                            EmptyHint("暂未找到可查询的任务\n请确认作业已布置试卷或课后习题")
+                            EmptyHint("暂未找到可查询的任务\n请确认作业已布置试卷，或使用粘贴链接查询")
                         }
                     }
                     is HomeViewModel.UiState.Error -> {
@@ -346,7 +347,7 @@ private fun LinkQueryEntry(onClick: () -> Unit) {
                 )
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    text = "输入 EWT360 试题链接，直接查询对应试卷",
+                    text = "输入 EWT360 试题链接（试卷 / 课后习题均可），直接查询",
                     fontSize = 12.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
