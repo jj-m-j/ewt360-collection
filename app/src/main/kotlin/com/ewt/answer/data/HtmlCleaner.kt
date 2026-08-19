@@ -27,6 +27,10 @@ object HtmlCleaner {
     )
     private val newlineRe = Regex("""\n{3,}""")
 
+    /** 图片 URL 统一转 https（http 明文在 Android 默认被禁，Coil 无法加载） */
+    private fun normalizeImgUrl(url: String): String =
+        url.replace(Regex("""^http://file\.ewt360\.com/"""), "https://file.ewt360.com/")
+
     /**
      * 预处理：清洗为“仅含 <img> 标签”的安全 HTML 字符串（与 JS cleanHtmlKeepImg 一致）
      */
@@ -67,7 +71,7 @@ object HtmlCleaner {
                 val chunk = t.substring(last, m.range.first).trim()
                 if (chunk.isNotEmpty()) segments.add(Segment.Text(chunk))
             }
-            segments.add(Segment.Image(m.groupValues[1]))
+            segments.add(Segment.Image(normalizeImgUrl(m.groupValues[1])))
             last = m.range.last + 1
         }
         if (last < t.length) {
