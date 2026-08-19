@@ -25,7 +25,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * 题目页 ViewModel
  *
  * 流程：打开试卷 → reportId → 题目列表（题组/非题组）
- *   → 并发拉取答案（信号量限流 4）→ 进度 / 失败重试
+ *   → 空交卷解锁 → 并发拉取答案（信号量限流 4）→ 进度 / 失败重试
+ *   → 用户确认后提交答案（选择题标准答案 + 非选择题自批）并交卷自批
  */
 class QuestionsViewModel(
     private val repo: EwtRepository,
@@ -59,6 +60,14 @@ class QuestionsViewModel(
     private val _done = MutableStateFlow(0)
     val done: StateFlow<Int> = _done
 
+    /** 提交中 */
+    private val _submitting = MutableStateFlow(false)
+    val submitting: StateFlow<Boolean> = _submitting
+
+    /** 提交结果描述 */
+    private val _submitResult = MutableStateFlow<String?>(null)
+    val submitResult: StateFlow<String?> = _submitResult
+
     private var session: PaperSession? = null
 
     fun load() {
@@ -78,12 +87,14 @@ class QuestionsViewModel(
         }
     }
 
-    /** 获取全部题目答案（并发上限 4，防限流 / ANR） */
+    /** 获取全部题目答案（先空交卷解锁，并发上限 4，防限流 / ANR） */
     fun fetchAllAnswers() {
         val s = session ?: return
         val state = _uiState.value as? UiState.Ready ?: return
         if (_fetching.value) return
         viewModelScope.launch {
+            // 空交卷解锁：答案/解析接口在交卷后才返回内容
+            runCatching { repo.unlockPaper(s) }
             fetchAnswersInternal(s, state.questions)
         }
     }
@@ -127,6 +138,32 @@ class QuestionsViewModel(
                 _failed.value = failedIds.toSet()
             }
         }
+    }
+
+    /** 提交整卷答案（用户已确认）：选择题标准答案 + 非选择题自批 + 交卷自批 */
+    fun submitAnswers() {
+        val state = _uiState.value as? UiState.Ready ?: return
+        if (_submitting.value) return
+        if (_answers.value.isEmpty()) return
+        viewModelScope.launch {
+            _submitting.value = true
+            _submitResult.value = null
+            try {
+                val msg = repo.submitPaperAnswers(paper, state.questions, _answers.value)
+                _submitResult.value = msg
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _submitResult.value = "提交失败：${e.message}"
+            } finally {
+                _submitting.value = false
+            }
+        }
+    }
+
+    /** 清除提交结果提示 */
+    fun clearSubmitResult() {
+        _submitResult.value = null
     }
 
     private suspend fun fetchAnswersInternal(s: PaperSession, questions: List<QuestionItem>) {
