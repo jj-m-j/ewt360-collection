@@ -1,5 +1,6 @@
 package com.ewt.answer.ui
 
+import android.content.Context
 import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +37,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -49,11 +52,13 @@ import com.ewt.answer.data.UserInfo
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.TextStyles
 import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.defaultTextStyles
 import top.yukonga.miuix.kmp.theme.lightColorScheme
+import top.yukonga.miuix.kmp.window.WindowDialog
 
 /** 应用内页面 */
 sealed class Screen {
@@ -76,10 +81,30 @@ fun AppRoot() {
     val dark = isSystemInDarkTheme()
     val colors = if (dark) darkColorScheme() else lightColorScheme()
 
-    // 动态加载 MiSans 字体（首次下载缓存，失败回退系统字体）
+    // 字体偏好（首次询问后决定）
+    val prefs = remember { context.getSharedPreferences("ewt_prefs", Context.MODE_PRIVATE) }
+    var fontEnabled by remember { mutableStateOf(prefs.getBoolean("font_enabled", false)) }
+    var fontPrompted by remember { mutableStateOf(prefs.getBoolean("font_prompted", false)) }
+    var showFontPrompt by remember { mutableStateOf(false) }
+    // 主观题准确率（0-100）
+    var accuracy by remember { mutableIntStateOf(prefs.getInt("accuracy", 100)) }
+
+    // 动态加载 MiSans 字体
     var miSans by remember { mutableStateOf<FontFamily?>(null) }
+    LaunchedEffect(fontEnabled) {
+        if (fontEnabled) {
+            miSans = MiuixFonts.loadMiSans(context)
+        } else {
+            miSans = null
+        }
+    }
+    // 首次使用：询问是否下载字体
     LaunchedEffect(Unit) {
-        miSans = MiuixFonts.loadMiSans(context)
+        if (!fontPrompted && !MiuixFonts.isDownloaded(context) && !fontEnabled) {
+            showFontPrompt = true
+        } else if (fontEnabled && miSans == null) {
+            miSans = MiuixFonts.loadMiSans(context)
+        }
     }
     val textStyles = remember(miSans) {
         miSans?.let { miSansTextStyles(it) } ?: defaultTextStyles()
@@ -124,7 +149,7 @@ fun AppRoot() {
             }
         }
 
-        // 系统预测式返回回调：手势开始/进度/取消/完成
+        // 系统预测式返回回调
         val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
         val backCallback = remember {
             object : OnBackPressedCallback(true) {
@@ -159,11 +184,10 @@ fun AppRoot() {
             dispatcher?.addCallback(backCallback)
             onDispose { backCallback.remove() }
         }
-        // 仅二级页面启用返回手势（一级页面由系统处理退出）
         backCallback.isEnabled =
             screen !is Screen.Main && screen !is Screen.Login && screen !is Screen.Boot
 
-        // 手势完成切屏后：进度归零、恢复正常转场
+        // 手势完成切屏后：进度归零
         LaunchedEffect(gestureCommitted) {
             if (gestureCommitted) {
                 backProgress.snapTo(0f)
@@ -171,7 +195,7 @@ fun AppRoot() {
             }
         }
 
-        // 启动：校验已保存的登录态
+        // 启动：校验登录态
         LaunchedEffect(Unit) {
             screen = if (repo.hasToken()) {
                 try {
@@ -186,17 +210,22 @@ fun AppRoot() {
             }
         }
 
-        // ── 双层渲染：背景=上一页（手势时可见），顶层=当前页（手势跟随） ──
+        // ── 双层渲染：背景=上一页（Main 常驻防瞬移），顶层=当前页（手势跟随） ──
         Box(Modifier.fillMaxSize()) {
-            if (showPrevLayer && previous != null) {
+            // 背景层：Main 常驻组合（alpha 控制），其他 prev 手势时组合
+            if (previous != null && (previous == Screen.Main || showPrevLayer)) {
                 Box(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
                             val p = backProgress.value
-                            // 被覆盖页：从左侧 1/4 视差位置向右回正 + 透明度恢复（MIUIX covered 层）
-                            translationX = -0.25f * size.width * (1f - p)
-                            alpha = 0.9f + 0.1f * p
+                            if (previous == Screen.Main) {
+                                alpha = if (showPrevLayer) 0.9f + 0.1f * p else 0f
+                                translationX = -0.25f * size.width * (if (showPrevLayer) (1f - p) else 1f)
+                            } else {
+                                alpha = 0.9f + 0.1f * p
+                                translationX = -0.25f * size.width * (1f - p)
+                            }
                         },
                 ) {
                     RenderScreen(
@@ -207,18 +236,29 @@ fun AppRoot() {
                         tab = tab,
                         onTabSelect = { tab = it },
                         repo = repo,
+                        accuracy = accuracy,
+                        fontEnabled = fontEnabled,
+                        onFontEnabledChange = { en ->
+                            fontEnabled = en
+                            prefs.edit().putBoolean("font_enabled", en).apply()
+                            if (!en) MiuixFonts.clearCache(context)
+                        },
+                        onAccuracyChange = { a ->
+                            accuracy = a
+                            prefs.edit().putInt("accuracy", a).apply()
+                        },
                         navigateTo = { navigateTo(it) },
                         onBack = { goBack() },
                         onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
                     )
                 }
             }
+            // 顶层：当前页（手势跟随）
             Box(
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
                         val p = backProgress.value
-                        // 当前页：向右全宽滑出 + 缩放 + 圆角 clip（MIUIX 顶部页 + 系统预测式返回风格）
                         translationX = size.width * p
                         scaleX = 1f - 0.08f * p
                         scaleY = 1f - 0.08f * p
@@ -232,16 +272,13 @@ fun AppRoot() {
                     targetState = screen,
                     transitionSpec = {
                         when {
-                            // 手势完成：无动画（视觉已由手势完成）
                             gestureCommitted -> fadeIn(tween(1)).togetherWith(fadeOut(tween(1)))
-                            // 进入二级页面：从右侧滑入
                             targetState is Screen.Questions ||
                                 targetState is Screen.LinkQuery ||
                                 targetState is Screen.Debug -> {
                                 (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
                                     .togetherWith(fadeOut(tween(200)))
                             }
-                            // 返回主层：从左侧滑回
                             else -> {
                                 (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { -it / 3 })
                                     .togetherWith(fadeOut(tween(200)))
@@ -258,10 +295,67 @@ fun AppRoot() {
                         tab = tab,
                         onTabSelect = { tab = it },
                         repo = repo,
+                        accuracy = accuracy,
+                        fontEnabled = fontEnabled,
+                        onFontEnabledChange = { en ->
+                            fontEnabled = en
+                            prefs.edit().putBoolean("font_enabled", en).apply()
+                            if (!en) MiuixFonts.clearCache(context)
+                        },
+                        onAccuracyChange = { a ->
+                            accuracy = a
+                            prefs.edit().putInt("accuracy", a).apply()
+                        },
                         navigateTo = { navigateTo(it) },
                         onBack = { goBack() },
                         onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
                     )
+                }
+            }
+        }
+
+        // 首次使用：字体下载询问
+        if (showFontPrompt) {
+            WindowDialog(
+                show = true,
+                title = "下载 MiSans 字体？",
+                summary = "提升显示效果",
+                onDismissRequest = {
+                    prefs.edit().putBoolean("font_prompted", true).apply()
+                    showFontPrompt = false
+                },
+            ) {
+                Column {
+                    Text(
+                        text = "MiSans 为小米系统级字体，下载后界面显示效果更佳。占用约 20MB 空间，可在「关于 → 设置」中随时关闭并删除。",
+                        fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
+                    ) {
+                        TextButton(
+                            text = "暂不",
+                            onClick = {
+                                prefs.edit().putBoolean("font_prompted", true).apply()
+                                showFontPrompt = false
+                            },
+                        )
+                        TextButton(
+                            text = "下载",
+                            onClick = {
+                                prefs.edit()
+                                    .putBoolean("font_prompted", true)
+                                    .putBoolean("font_enabled", true)
+                                    .apply()
+                                fontEnabled = true
+                                showFontPrompt = false
+                            },
+                        )
+                    }
                 }
             }
         }
@@ -278,6 +372,10 @@ private fun RenderScreen(
     tab: Int,
     onTabSelect: (Int) -> Unit,
     repo: EwtRepository,
+    accuracy: Int,
+    fontEnabled: Boolean,
+    onFontEnabledChange: (Boolean) -> Unit,
+    onAccuracyChange: (Int) -> Unit,
     navigateTo: (Screen) -> Unit,
     onBack: () -> Unit,
     onPaperOpened: (String, Int) -> Unit,
@@ -293,6 +391,10 @@ private fun RenderScreen(
             listState = listState,
             tab = tab,
             onTabSelect = onTabSelect,
+            accuracy = accuracy,
+            fontEnabled = fontEnabled,
+            onFontEnabledChange = onFontEnabledChange,
+            onAccuracyChange = onAccuracyChange,
             onOpenPaper = { paper -> navigateTo(Screen.Questions(paper)) },
             onOpenLinkQuery = { navigateTo(Screen.LinkQuery) },
             onOpenDebug = { navigateTo(Screen.Debug) },
@@ -316,7 +418,7 @@ private fun RenderScreen(
     }
 }
 
-/** 主层：底部 Tab（试卷 / 关于） */
+/** 主层：悬浮底部 Tab（试卷 / 关于） */
 @Composable
 private fun MainLayer(
     userInfo: UserInfo?,
@@ -324,61 +426,70 @@ private fun MainLayer(
     listState: LazyListState,
     tab: Int,
     onTabSelect: (Int) -> Unit,
+    accuracy: Int,
+    fontEnabled: Boolean,
+    onFontEnabledChange: (Boolean) -> Unit,
+    onAccuracyChange: (Int) -> Unit,
     onOpenPaper: (Paper) -> Unit,
     onOpenLinkQuery: () -> Unit,
     onOpenDebug: () -> Unit,
     onLogout: () -> Unit,
 ) {
-    Column(Modifier.fillMaxSize()) {
-        Box(Modifier.weight(1f)) {
-            AnimatedContent(
-                targetState = tab,
-                transitionSpec = {
-                    fadeIn(tween(180)).togetherWith(fadeOut(tween(120)))
-                },
-                label = "tab",
-            ) { t ->
-                when (t) {
-                    TAB_PAPERS -> HomeScreen(
-                        userInfo = userInfo,
-                        paperCounts = paperCounts,
-                        listState = listState,
-                        onOpenPaper = onOpenPaper,
-                        onOpenLinkQuery = onOpenLinkQuery,
-                    )
-                    else -> AboutScreen(
-                        onOpenDebug = onOpenDebug,
-                        onLogout = onLogout,
-                    )
-                }
+    Box(Modifier.fillMaxSize()) {
+        AnimatedContent(
+            targetState = tab,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 74.dp),
+            transitionSpec = {
+                fadeIn(tween(180)).togetherWith(fadeOut(tween(120)))
+            },
+            label = "tab",
+        ) { t ->
+            when (t) {
+                TAB_PAPERS -> HomeScreen(
+                    userInfo = userInfo,
+                    paperCounts = paperCounts,
+                    listState = listState,
+                    accuracy = accuracy,
+                    onOpenPaper = onOpenPaper,
+                    onOpenLinkQuery = onOpenLinkQuery,
+                )
+                else -> AboutScreen(
+                    accuracy = accuracy,
+                    onAccuracyChange = onAccuracyChange,
+                    fontEnabled = fontEnabled,
+                    fontMb = MiuixFonts.downloadedMb(LocalContext.current),
+                    onFontEnabledChange = onFontEnabledChange,
+                    onOpenDebug = onOpenDebug,
+                    onLogout = onLogout,
+                )
             }
         }
-        BottomTabBar(tab = tab, onTabSelect = onTabSelect)
-    }
-}
-
-/** 底部 Tab 栏（文字样式，半透明毛玻璃感） */
-@Composable
-private fun BottomTabBar(tab: Int, onTabSelect: (Int) -> Unit) {
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .background(MiuixTheme.colorScheme.surface.copy(alpha = 0.92f))
-            .height(54.dp),
-    ) {
-        Row(Modifier.fillMaxSize()) {
-            TabItem(
-                text = "试卷",
-                selected = tab == TAB_PAPERS,
-                onClick = { onTabSelect(TAB_PAPERS) },
-                modifier = Modifier.weight(1f),
-            )
-            TabItem(
-                text = "关于",
-                selected = tab == TAB_ABOUT,
-                onClick = { onTabSelect(TAB_ABOUT) },
-                modifier = Modifier.weight(1f),
-            )
+        // 悬浮胶囊底栏
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .padding(horizontal = 20.dp, vertical = 10.dp)
+                .shadow(8.dp, RoundedCornerShape(28.dp))
+                .background(MiuixTheme.colorScheme.surface.copy(alpha = 0.94f), RoundedCornerShape(28.dp))
+                .fillMaxWidth()
+                .height(52.dp),
+        ) {
+            Row(Modifier.fillMaxSize()) {
+                TabItem(
+                    text = "试卷",
+                    selected = tab == TAB_PAPERS,
+                    onClick = { onTabSelect(TAB_PAPERS) },
+                    modifier = Modifier.weight(1f),
+                )
+                TabItem(
+                    text = "关于",
+                    selected = tab == TAB_ABOUT,
+                    onClick = { onTabSelect(TAB_ABOUT) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
