@@ -15,7 +15,7 @@ data class HomeworkItem(
     val endTime: Long,
 )
 
-/** 独立试卷（展示用） */
+/** 独立试卷 / 课后习题（展示用） */
 data class Paper(
     val homeworkId: Long,
     val homeworkTitle: String,
@@ -25,6 +25,8 @@ data class Paper(
     val ratio: Double?,
     val date: String,
     val subjectName: String,
+    /** 业务编码：205=作业试卷，204=课后习题（来自链接 URL 参数） */
+    val bizCode: String = EwtApi.BIZ_SUBMIT,
 )
 
 /** 按作业分组的试卷 */
@@ -86,6 +88,7 @@ object PaperLinkParser {
     /**
      * 支持形如：
      * https://web.ewt360.com/answer-pc/exam/answer?paperId=xxx&platform=1&bizCode=201
+     * https://web.ewt360.com/answer-pc/exam/answer?bizCode=204&paperId=xxx（课后习题）
      * https://gateway.ewt360.com/...?paperId=xxx
      */
     fun parse(raw: String): PaperLink? {
@@ -104,12 +107,12 @@ object PaperLinkParser {
         return PaperLink(
             paperId = paperId,
             platform = params["platform"] ?: EwtApi.PLATFORM,
-            bizCode = params["bizCode"] ?: EwtApi.BIZ_VIEW,
+            bizCode = params["bizCode"] ?: EwtApi.BIZ_SUBMIT,
             homeworkId = params["homeworkId"],
         )
     }
 
-    fun toPaper(link: PaperLink, title: String = "链接试卷"): Paper = Paper(
+    fun toPaper(link: PaperLink, title: String = "链接导入"): Paper = Paper(
         homeworkId = link.homeworkId?.toLongOrNull() ?: 0L,
         homeworkTitle = "通过链接导入",
         paperId = link.paperId,
@@ -118,5 +121,6 @@ object PaperLinkParser {
         ratio = null,
         date = "",
         subjectName = "",
+        bizCode = link.bizCode,
     )
 }
