@@ -37,7 +37,7 @@ object EwtApi {
     const val WEB = "https://web.ewt360.com"
     /** 查看答案使用的 bizCode（JS 中 BIZ_VIEW） */
     const val BIZ_VIEW = "201"
-    /** 提交答案使用的 bizCode */
+    /** 作业答题/提交使用的 bizCode（EWT-TOOL-main 使用） */
     const val BIZ_SUBMIT = "205"
     const val PLATFORM = "1"
     const val UA = "Mozilla/5.0"
@@ -173,13 +173,23 @@ object EwtEndpoints {
     suspend fun getSchoolUserInfo(): JsonObject =
         EwtApi.getJson("${EwtApi.BASE}/api/eteacherproduct/school/getSchoolUserInfo", EwtApi.courseHeaders())
 
-    // ── 试卷 / 答案（bizCode=201 视图态） ────────────────────────
+    // ── 试卷 / 答案 ─────────────────────────────────────────────
 
-    /** 获取 reportId（JS getReportId） */
-    suspend fun getReportId(paperId: String, platform: String, bizCode: String): JsonObject {
+    /**
+     * 初始化 / 获取 reportId（EWT-TOOL-main initReport）：
+     * bizCode=205 + extId(homeworkId) + reportId=0 + isRepeat，
+     * 未做过的试卷也能初始化；已做过的试卷在 isRepeat=0 失败后改用 isRepeat=1。
+     */
+    suspend fun initReport(
+        paperId: String,
+        platform: String,
+        bizCode: String,
+        extId: Long = 0,
+        isRepeat: Int = 0,
+    ): JsonObject {
         val token = EwtApi.token ?: throw EwtException("未登录")
         val url = "${EwtApi.BASE}/api/answerprod/web/answer/report" +
-            "?paperId=$paperId&platform=$platform&bizCode=$bizCode&token=$token"
+            "?paperId=$paperId&platform=$platform&extId=$extId&bizCode=$bizCode&reportId=0&isRepeat=$isRepeat&homeworkId=$extId&token=$token"
         return EwtApi.getJson(url, EwtApi.commonHeaders())
     }
 
