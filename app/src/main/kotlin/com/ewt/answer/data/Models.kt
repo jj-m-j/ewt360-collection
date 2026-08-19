@@ -58,6 +58,15 @@ data class QuestionItem(
     val score: Double = 0.0,
 )
 
+/** 复合题子题答案（混合题型 (1)(2)(3)…） */
+data class ChildAnswer(
+    val num: String,
+    val answer: String,
+    val analysisHtml: String,
+    val knowledge: String,
+    val images: List<String> = emptyList(),
+)
+
 /** 单题答案结果 */
 data class QuestionAnswer(
     val question: QuestionItem,
@@ -71,6 +80,8 @@ data class QuestionAnswer(
     val attachmentImages: List<String>,
     /** 选择题答案字母（如 ["A","C"]，用于提交） */
     val choiceAnswers: List<String> = emptyList(),
+    /** 复合题子题答案列表（父题为复合题时填充） */
+    val childItems: List<ChildAnswer> = emptyList(),
     /** 接口原始返回（调试用，定位字段结构） */
     val rawJson: String = "",
 )
