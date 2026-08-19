@@ -20,10 +20,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ewt.answer.data.DebugLog
@@ -73,7 +73,7 @@ fun DebugScreen(onBack: () -> Unit) {
             Text(
                 text = "EWT360 答案查询 v1.0.0 · 调试模式已开启",
                 fontSize = 13.sp,
-                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                fontWeight = FontWeight.Medium,
                 color = MiuixTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.height(4.dp))
@@ -95,30 +95,40 @@ fun DebugScreen(onBack: () -> Unit) {
                     color = MiuixTheme.colorScheme.onSurfaceSecondary,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 120.dp, max = 420.dp)
+                        .heightIn(min = 120.dp, max = 380.dp)
                         .verticalScroll(rememberScrollState()),
                 )
             }
 
             Spacer(Modifier.height(12.dp))
+            // 第一行：日志操作（等宽）
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TextButton(text = "刷新日志", onClick = { logText = DebugLog.readLog() })
-                Spacer(Modifier.size(4.dp))
-                TextButton(text = "分享日志", onClick = { shareLog(context) })
-                Spacer(Modifier.size(4.dp))
-                TextButton(text = "清空日志", onClick = {
-                    DebugLog.clear()
-                    logText = DebugLog.readLog()
-                })
+                TextButton(
+                    text = "刷新",
+                    onClick = { logText = DebugLog.readLog() },
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = "分享",
+                    onClick = { shareLog(context) },
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = "清空",
+                    onClick = {
+                        DebugLog.clear()
+                        logText = DebugLog.readLog()
+                    },
+                    modifier = Modifier.weight(1f),
+                )
             }
+            // 第二行：字体下载（等宽）
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 TextButton(
                     text = if (fontLoading) "字体下载中…" else "下载 MiSans 字体",
@@ -135,6 +145,7 @@ fun DebugScreen(onBack: () -> Unit) {
                             fontLoading = false
                         }
                     },
+                    modifier = Modifier.weight(1f),
                 )
             }
         }
