@@ -19,15 +19,23 @@ import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.Slider
+import top.yukonga.miuix.kmp.basic.SmallTitle
+import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 关于页（底部 Tab）：版本信息 + 调试模式 + 退出登录 */
+/** 关于页（底部 Tab）：版本 + 设置（字体/准确率）+ 调试模式 + 退出登录 */
 @Composable
 fun AboutScreen(
+    accuracy: Int,
+    onAccuracyChange: (Int) -> Unit,
+    fontEnabled: Boolean,
+    fontMb: String,
+    onFontEnabledChange: (Boolean) -> Unit,
     onOpenDebug: () -> Unit,
     onLogout: () -> Unit,
 ) {
@@ -60,6 +68,76 @@ fun AboutScreen(
                         text = "v1.0.0 · MIUIX 风格 · 答案与解析来自 EWT360 官方接口",
                         fontSize = 12.sp,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+            }
+
+            // 设置：MiSans 字体
+            SmallTitle("设置")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = "MiSans 字体",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.height(3.dp))
+                        Text(
+                            text = if (fontEnabled && fontMb.isNotBlank()) "已启用（占用 $fontMb）" else "关闭后恢复系统字体并删除已下载",
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                    Switch(
+                        checked = fontEnabled,
+                        onCheckedChange = onFontEnabledChange,
+                    )
+                }
+            }
+            // 设置：主观题准确率
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = "主观题准确率",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MiuixTheme.colorScheme.onSurface,
+                            )
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                text = "客观题由系统批改；主观题按比例分配 满分 / 半对 / 错",
+                                fontSize = 12.sp,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+                        Text(
+                            text = "$accuracy%",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MiuixTheme.colorScheme.primary,
+                        )
+                    }
+                    Slider(
+                        value = accuracy.toFloat() / 100f,
+                        onValueChange = { onAccuracyChange((it * 100).toInt().coerceIn(0, 100)) },
+                        valueRange = 0f..1f,
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
