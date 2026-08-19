@@ -187,7 +187,7 @@ fun QuestionsScreen(
         }
     }
 
-    // 提交确认对话框（WindowDialog 不依赖 Scaffold，保证可显示）
+    // 提交确认对话框（等宽双按钮，确认为 MIUI 蓝）
     if (showSubmitDialog) {
         WindowDialog(
             show = true,
@@ -197,25 +197,29 @@ fun QuestionsScreen(
         ) {
             Column {
                 Text(
-                    text = "将提交全部已获取的选择题标准答案；非选择题按自批处理，随后交卷并自批。确定继续？",
+                    text = "将提交全部已获取的选择题标准答案；非选择题按设置的自批准确率处理，随后交卷并自批。确定继续？",
                     fontSize = 13.sp,
                     color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(14.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    TextButton(text = "取消", onClick = { showSubmitDialog = false })
-                    Spacer(Modifier.size(8.dp))
                     TextButton(
-                        text = "确认提交",
+                        text = "取消",
+                        modifier = Modifier.weight(1f),
+                        onClick = { showSubmitDialog = false },
+                    )
+                    Button(
                         onClick = {
                             showSubmitDialog = false
                             vm.submitAnswers()
                         },
-                    )
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("确认", fontSize = 14.sp)
+                    }
                 }
             }
         }
@@ -290,20 +294,14 @@ private fun FetchHeaderCard(
 
             if (allFetched) {
                 Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "✓ 全部获取完成",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MiuixTheme.colorScheme.primary,
-                    )
-                }
+                Text(
+                    text = "✓ 全部获取完成",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.primary,
+                )
             }
 
-            // 提交答案
             if (done > 0 && !fetching) {
                 Spacer(Modifier.height(12.dp))
                 Button(
@@ -354,7 +352,6 @@ private fun QuestionRow(
         label = "arrow_rotation",
     )
 
-    // 未获取答案时行不可点击；已获取或失败时可展开查看
     val onClick: (() -> Unit)? = if (answer != null || failed) {
         { expanded = !expanded }
     } else {
