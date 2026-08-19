@@ -21,6 +21,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -32,6 +33,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ewt.answer.data.HomeworkGroup
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.UserInfo
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
@@ -67,10 +70,17 @@ fun HomeScreen(
     val searchQuery by vm.searchQuery.collectAsState()
 
     val searchState = rememberTextFieldState()
+    // 外部状态 → 输入框（防止状态重置）
     LaunchedEffect(searchQuery) {
         if (searchState.text.toString() != searchQuery) {
             searchState.edit { replace(0, length, searchQuery) }
         }
+    }
+    // 输入框 → 外部状态（miuix TextField 为 state 驱动，无 onValueChange）
+    LaunchedEffect(searchState) {
+        snapshotFlow { searchState.text.toString() }
+            .distinctUntilChanged()
+            .collect { vm.setSearchQuery(it) }
     }
 
     LaunchedEffect(Unit) { vm.load() }
@@ -150,7 +160,6 @@ fun HomeScreen(
                         state = searchState,
                         label = "搜索试卷 / 课后习题",
                         useLabelAsPlaceholder = true,
-                        onValueChange = { vm.setSearchQuery(it) },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
