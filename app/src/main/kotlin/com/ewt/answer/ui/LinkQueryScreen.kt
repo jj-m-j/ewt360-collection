@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.PaperLinkParser
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -97,6 +98,11 @@ fun LinkQueryScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
+                // MIUI 蓝
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MiuixTheme.colorScheme.primary,
+                    contentColor = MiuixTheme.colorScheme.onPrimary,
+                ),
             ) {
                 Text("查询试卷", fontSize = 14.sp)
             }
