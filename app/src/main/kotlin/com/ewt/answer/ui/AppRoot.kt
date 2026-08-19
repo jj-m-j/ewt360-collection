@@ -57,6 +57,8 @@ fun AppRoot() {
         val repo = AppContainer.repository
         var screen by remember { mutableStateOf<Screen>(Screen.Boot) }
         var userInfo by remember { mutableStateOf<UserInfo?>(null) }
+        // paperId → 真实题数（打开试卷后回传，主页展示）
+        var paperCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
 
         // 启动：校验已保存的登录态
         LaunchedEffect(Unit) {
@@ -91,6 +93,7 @@ fun AppRoot() {
                 )
                 Screen.Home -> HomeScreen(
                     userInfo = userInfo,
+                    paperCounts = paperCounts,
                     onOpenPaper = { paper -> screen = Screen.Questions(paper) },
                     onOpenLinkQuery = { screen = Screen.LinkQuery },
                 )
@@ -101,6 +104,9 @@ fun AppRoot() {
                 is Screen.Questions -> QuestionsScreen(
                     paper = s.paper,
                     onBack = { screen = Screen.Home },
+                    onPaperOpened = { paperId, count ->
+                        if (count > 0) paperCounts = paperCounts + (paperId to count)
+                    },
                 )
             }
         }
