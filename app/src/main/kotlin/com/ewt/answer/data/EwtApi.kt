@@ -37,6 +37,8 @@ object EwtApi {
     const val WEB = "https://web.ewt360.com"
     /** 查看答案使用的 bizCode（JS 中 BIZ_VIEW） */
     const val BIZ_VIEW = "201"
+    /** 提交答案使用的 bizCode */
+    const val BIZ_SUBMIT = "205"
     const val PLATFORM = "1"
     const val UA = "Mozilla/5.0"
 
@@ -171,7 +173,7 @@ object EwtEndpoints {
     suspend fun getSchoolUserInfo(): JsonObject =
         EwtApi.getJson("${EwtApi.BASE}/api/eteacherproduct/school/getSchoolUserInfo", EwtApi.courseHeaders())
 
-    // ── 试卷 / 答案（bizCode=201 视图态，不提交任何内容） ────────
+    // ── 试卷 / 答案（bizCode=201 视图态） ────────────────────────
 
     /** 获取 reportId（JS getReportId） */
     suspend fun getReportId(paperId: String, platform: String, bizCode: String): JsonObject {
@@ -276,4 +278,67 @@ object EwtEndpoints {
             },
             EwtApi.courseHeaders(),
         ).unwrapArray("data")
+
+    // ── 提交链路（用户授权；与 EWT-TOOL-main paperFiller 一致） ──
+
+    /** 上报作答时长 / 空交卷（JS updateReport，解锁答案用） */
+    suspend fun updateReport(paperId: String, reportId: String, platform: String, bizCode: String): JsonObject =
+        EwtApi.postJson(
+            "${EwtApi.BASE}/api/answerprod/web/answer/submitpaper",
+            buildJsonObject {
+                put("paperId", paperId)
+                put("reportId", reportId)
+                put("bizCode", bizCode)
+                put("platform", platform)
+                put("totalSeconds", 600)
+                put("homeworkId", "0")
+            },
+        )
+
+    /** 提交答案（选择题答案 / 非选择题自批项；EWT-TOOL-main submitAnswers） */
+    suspend fun submitAnswer(
+        paperId: String,
+        reportId: String,
+        platform: String,
+        bizCode: String,
+        answers: JsonArray,
+    ): JsonObject =
+        EwtApi.postJson(
+            "${EwtApi.BASE}/api/answerprod/web/answer/submitAnswer",
+            buildJsonObject {
+                put("answers", answers)
+                put("assignPoints", true)
+                put("bizCode", bizCode)
+                put("paperId", paperId)
+                put("platform", platform)
+                put("reportId", reportId)
+            },
+        )
+
+    /** 交卷（EWT-TOOL-main submitPaper） */
+    suspend fun submitPaper(paperId: String, reportId: String, platform: String, bizCode: String): JsonObject =
+        EwtApi.postJson(
+            "${EwtApi.BASE}/api/answerprod/web/answer/submitpaper",
+            buildJsonObject {
+                put("paperId", paperId)
+                put("platform", platform)
+                put("reportId", reportId)
+                put("totalSeconds", 600)
+                put("bizCode", bizCode)
+                put("homeworkId", "0")
+            },
+        )
+
+    /** 自批（EWT-TOOL-main submitCorrected） */
+    suspend fun submitCorrected(paperId: String, reportId: String, platform: String, bizCode: String): JsonObject =
+        EwtApi.postJson(
+            "${EwtApi.BASE}/api/answerprod/web/answer/submitCorrected",
+            buildJsonObject {
+                put("reportId", reportId)
+                put("paperId", paperId)
+                put("platform", platform)
+                put("bizCode", bizCode)
+                put("paperPackageId", JsonNull)
+            },
+        )
 }
