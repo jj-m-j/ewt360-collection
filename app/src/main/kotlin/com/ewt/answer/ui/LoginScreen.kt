@@ -158,6 +158,20 @@ private fun StatusBar(text: String, onReload: () -> Unit) {
     }
 }
 
+/**
+ * 是否允许该 URL 在 WebView 内继续加载。
+ * 仅放行 http/https；EWT360 网页在 Android 上会尝试跳转
+ * `intent://` / `mistong://` / `ewt://` 等自定义 scheme 以唤起原生 App，
+ * WebView 不支持这些 scheme，直接拦截以免出现 ERR_UNKNOWN_URL_SCHEME。
+ */
+private fun shouldLoadInWebView(url: String?): Boolean {
+    val u = url ?: return false
+    if (u.startsWith("http://") || u.startsWith("https://")) {
+        return false // 不拦截，WebView 正常加载
+    }
+    return true // 拦截未知 scheme
+}
+
 @SuppressLint("SetJavaScriptEnabled")
 private fun createLoginWebView(
     context: Context,
@@ -179,9 +193,13 @@ private fun createLoginWebView(
             onPageLoading(false)
         }
 
+        @Suppress("DEPRECATION")
+        override fun shouldOverrideUrlLoading(view: WebView?, url: String?): Boolean {
+            return shouldLoadInWebView(url)
+        }
+
         override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-            // 始终在 WebView 内打开，保证 Cookie 同一容器
-            return false
+            return shouldLoadInWebView(request?.url?.toString())
         }
     }
     CookieManager.getInstance().setAcceptCookie(true)
