@@ -5,18 +5,20 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.put
 
 /**
- * 仓库层：组合 EWT-TOOL-main（扫描试卷/题目）与 ewt-getanwser.js（获取答案）能力。
+ * 仓库层：组合 EWT-TOOL-main（扫描试卷/题目/刷卷）与 ewt-getanwser.js（获取答案）能力。
  *
  * 数据流：
  * 扫描试卷（EWT-TOOL-main paperScanner.ts）
  *   → getReportId（ewt-getanwser.js）
  *   → 题目列表（题组 getAnswerSheetSubGroup / 非题组 answerSheetInfo）
+ *   → 空交卷解锁（updateReport，bizCode=201，答案接口在交卷后才返回答案/解析）
  *   → 逐题答案（simple/question/analysis）
- *
- * 注意：本仓库只做「获取 / 解析」，绝不调用 submitAnswer / submitpaper 等写接口。
+ *   → 提交（用户确认后）：submitAnswer（选择题标准答案 + 非选择题自批）+ submitPaper + submitCorrected
  */
 class EwtRepository(private val tokenStore: SecureTokenStore) {
 
@@ -164,7 +166,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     // ── 试卷会话 / 题目 ─────────────────────────────────────────
 
-    /** 打开试卷：获取 reportId（视图态 bizCode=201，不提交任何内容） */
+    /** 打开试卷：获取 reportId（视图态 bizCode=201） */
     suspend fun openPaper(paper: Paper): PaperSession {
         val report = EwtEndpoints.getReportId(paper.paperId, EwtApi.PLATFORM, EwtApi.BIZ_VIEW)
             .optObj("data")
@@ -180,6 +182,11 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
             reportId = reportId,
             title = paper.title,
         )
+    }
+
+    /** 空交卷解锁：仅上报作答时长，不提交任何答案内容（答案/解析接口在交卷后才返回） */
+    suspend fun unlockPaper(session: PaperSession) {
+        EwtEndpoints.updateReport(session.paperId, session.reportId, session.platform, session.bizCode)
     }
 
     /** 获取题目列表：优先题组接口，失败回退非题组接口 */
@@ -214,6 +221,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                         cateId = qo.intOr("cateId", 1),
                         subjective = qo.boolOr("subjective", false),
                         groupName = groupName,
+                        score = qo.doubleOr("score", 0.0),
                     ),
                 )
             }
@@ -240,6 +248,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                     cateId = qo.intOr("cateId", 1),
                     subjective = qo.boolOr("subjective", false),
                     groupName = "",
+                    score = qo.doubleOr("score", 0.0),
                 ),
             )
         }
@@ -258,6 +267,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
             ).optObj("data") ?: return null
 
             val answerStr = extractAnswerText(data)
+            val choiceAnswers = extractChoiceList(data)
             val knowledges = data.optArr("knowledges")
                 ?.mapNotNull { (it as? JsonObject)?.str("title") }
                 ?.filter { it.isNotBlank() }
@@ -274,12 +284,79 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 analysisHtml = analysisHtml,
                 knowledges = knowledges,
                 attachmentImages = images,
+                choiceAnswers = choiceAnswers,
                 rawJson = data.toString(),
             )
         } catch (e: Exception) {
             null
         }
     }
+
+    // ── 提交（用户确认后调用；EWT-TOOL-main paperFiller 流程） ──
+
+    /**
+     * 提交整卷答案并交卷自批：
+     * - 选择题：提交标准答案字母
+     * - 非选择题：提交占位答案并标记 revision 自批（EWT-TOOL-main 逻辑）
+     * - submitpaper 交卷 → submitCorrected 自批
+     * 返回结果描述。
+     */
+    suspend fun submitPaperAnswers(
+        paper: Paper,
+        questions: List<QuestionItem>,
+        answers: Map<String, QuestionAnswer>,
+    ): String {
+        val biz = EwtApi.BIZ_SUBMIT
+        // 新建提交用 report（bizCode=205）
+        val report = EwtEndpoints.getReportId(paper.paperId, EwtApi.PLATFORM, biz).optObj("data")
+            ?: throw EwtException("初始化提交答卷失败")
+        val reportId = report.str("reportId") ?: report.str("report") ?: report.str("id")
+            ?: throw EwtException("初始化提交答卷失败")
+
+        val sel = mutableListOf<JsonObject>()
+        val notSel = mutableListOf<JsonObject>()
+        for (q in questions) {
+            val a = answers[q.questionId] ?: continue
+            val opts = a.choiceAnswers
+            if (opts.isNotEmpty()) {
+                // 选择题：提交答案字母
+                sel.add(
+                    buildJsonObject {
+                        put("questionId", q.questionId)
+                        put("questionNo", q.questionNumber.toIntOrNull() ?: 0)
+                        put("totalSeconds", 50)
+                        put("cateId", q.cateId)
+                        put("answers", JsonArray(opts.map { JsonPrimitive(it) }))
+                    },
+                )
+            } else {
+                // 非选择题：占位答案 + revision 自批
+                notSel.add(
+                    buildJsonObject {
+                        put("questionId", q.questionId)
+                        put("questionNo", q.questionNumber.toIntOrNull() ?: 0)
+                        put("totalSeconds", 50)
+                        put("cateId", q.cateId)
+                        put("answers", JsonArray(listOf(JsonPrimitive(1))))
+                        put("attachmentImages", JsonArray(emptyList()))
+                        put("score", q.score)
+                        put("revision", true)
+                    },
+                )
+            }
+        }
+        if (sel.isNotEmpty()) {
+            EwtEndpoints.submitAnswer(paper.paperId, reportId, EwtApi.PLATFORM, biz, JsonArray(sel))
+        }
+        if (notSel.isNotEmpty()) {
+            EwtEndpoints.submitAnswer(paper.paperId, reportId, EwtApi.PLATFORM, biz, JsonArray(notSel))
+        }
+        EwtEndpoints.submitPaper(paper.paperId, reportId, EwtApi.PLATFORM, biz)
+        EwtEndpoints.submitCorrected(paper.paperId, reportId, EwtApi.PLATFORM, biz)
+        return "已提交：选择题 ${sel.size} 题，非选择题 ${notSel.size} 题，并完成交卷自批"
+    }
+
+    // ── 字段提取辅助 ────────────────────────────────────────────
 
     /**
      * 兼容多种答案字段结构提取答案文本（按优先级尝试）：
@@ -312,6 +389,31 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
             }
         }
         return ""
+    }
+
+    /** 提取选择题答案字母列表（用于提交） */
+    private fun extractChoiceList(data: JsonObject): List<String> {
+        data.optArr("rightAnswer")?.let { arr ->
+            val items = arr.mapNotNull { el ->
+                when (el) {
+                    is JsonPrimitive -> el.contentOrNull
+                    is JsonObject -> el.str("content") ?: el.str("answer")
+                    else -> null
+                }
+            }
+            val opts = HtmlCleaner.extractChoiceAnswers(items)
+            if (opts.isNotEmpty()) return opts
+        }
+        data.str("rightAnswer")?.let { raw ->
+            runCatching {
+                val arr = Json.parseToJsonElement(raw) as? JsonArray ?: return@runCatching null
+                arr.mapNotNull { it.str() }
+            }.getOrNull()?.let { items ->
+                val opts = HtmlCleaner.extractChoiceAnswers(items)
+                if (opts.isNotEmpty()) return opts
+            }
+        }
+        return emptyList()
     }
 
     /** 从数组中提取答案文本（元素为字符串或对象） */
