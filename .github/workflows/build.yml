@@ -44,7 +44,33 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        id: build
+        shell: bash
+        run: |
+          set +e
+          ./gradlew assembleDebug --stacktrace > /tmp/gradle-build.log 2>&1
+          status=$?
+          if [ $status -ne 0 ]; then
+            echo "::group::Gradle log (tail 100)"
+            tail -100 /tmp/gradle-build.log
+            echo "::endgroup::"
+            echo "::error::Gradle build failed with exit code $status"
+            grep -E '^e: ' /tmp/gradle-build.log | head -40 | while IFS= read -r l; do
+              echo "::error::$l"
+            done || true
+            grep -E 'FAILURE:|Caused by:|> Task .* FAILED|What went wrong|Execution failed' /tmp/gradle-build.log | head -20 | while IFS= read -r l; do
+              echo "::error::$l"
+            done || true
+            exit $status
+          fi
+
+      - name: Upload build log (always)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: gradle-build-log
+          path: /tmp/gradle-build.log
+          if-no-files-found: ignore
 
       - name: Rename APK
         run: |
