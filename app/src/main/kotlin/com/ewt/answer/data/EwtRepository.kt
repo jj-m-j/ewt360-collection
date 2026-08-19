@@ -10,13 +10,13 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 
 /**
- * 仓库层：组合 EWT-TOOL-main（扫描试卷/题目/刷卷）与 ewt-getanwser.js（获取答案）能力。
+ * 仓库层：组合 EWT-TOOL-main（扫描试卷/刷卷）与 ewt-getanwser.js（获取答案）能力。
  *
  * 数据流：
- * 扫描试卷（EWT-TOOL-main paperScanner.ts）
- *   → getReportId（ewt-getanwser.js）
+ * 扫描试卷（EWT-TOOL-main paperScanner.ts，含试卷/课后习题）
+ *   → initReport（EWT-TOOL-main：bizCode=205 + extId + reportId=0 + isRepeat，未做过的试卷也能初始化）
  *   → 题目列表（题组 getAnswerSheetSubGroup / 非题组 answerSheetInfo）
- *   → 空交卷解锁（updateReport，bizCode=201，答案接口在交卷后才返回答案/解析）
+ *   → 空交卷解锁（updateReport，答案接口在交卷后才返回答案/解析）
  *   → 逐题答案（simple/question/analysis）
  *   → 提交（用户确认后）：submitAnswer（选择题标准答案 + 非选择题自批）+ submitPaper + submitCorrected
  */
@@ -87,7 +87,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         return all
     }
 
-    /** 扫描单个作业下的独立试卷（contentTypeName 含“试卷”） */
+    /** 扫描单个作业下的独立试卷 / 课后习题（contentTypeName 含“试卷”或“习题”） */
     suspend fun scanHomeworkPapers(schoolId: String, homework: HomeworkItem): List<Paper> {
         val papers = mutableListOf<Paper>()
         try {
@@ -105,14 +105,15 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                     for (t in tasks) {
                         val task = t as? JsonObject ?: continue
                         val typeName = task.str("contentTypeName").orEmpty()
-                        if (!typeName.contains("试卷")) continue
+                        // 独立试卷 + 课后习题（contentUrl 带 paperId 才可查询）
+                        if (!typeName.contains("试卷") && !typeName.contains("习题")) continue
                         val paperId = extractPaperId(task) ?: continue
                         papers.add(
                             Paper(
                                 homeworkId = homework.homeworkId,
                                 homeworkTitle = homework.title,
                                 paperId = paperId,
-                                title = task.str("title") ?: "未知试卷",
+                                title = task.str("title") ?: "未知任务",
                                 questionCount = task.str("questionCount") ?: "?",
                                 ratio = task.doubleOr("ratio", 0.0).takeIf { it > 0 },
                                 date = dateStr,
@@ -166,22 +167,35 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     // ── 试卷会话 / 题目 ─────────────────────────────────────────
 
-    /** 打开试卷：获取 reportId（视图态 bizCode=201） */
+    /**
+     * 打开试卷：初始化 / 获取 reportId（EWT-TOOL-main initReport，bizCode=205）。
+     * 未做过的试卷也能初始化；已做过的在 isRepeat=0 失败后自动用 isRepeat=1 重试。
+     */
     suspend fun openPaper(paper: Paper): PaperSession {
-        val report = EwtEndpoints.getReportId(paper.paperId, EwtApi.PLATFORM, EwtApi.BIZ_VIEW)
-            .optObj("data")
-            ?: throw EwtException("初始化答卷失败：无 reportId")
-        val reportId = report.str("reportId")
-            ?: report.str("report")
-            ?: report.str("id")
-            ?: throw EwtException("初始化答卷失败：无 reportId")
+        val reportId = initReportId(paper)
         return PaperSession(
             paperId = paper.paperId,
             platform = EwtApi.PLATFORM,
-            bizCode = EwtApi.BIZ_VIEW,
+            bizCode = EwtApi.BIZ_SUBMIT,
             reportId = reportId,
             title = paper.title,
         )
+    }
+
+    /** 初始化 report：先 isRepeat=0，若提示“已做过/已答”则 isRepeat=1 重试 */
+    private suspend fun initReportId(paper: Paper): String {
+        val extId = paper.homeworkId
+        val first = runCatching {
+            EwtEndpoints.initReport(paper.paperId, EwtApi.PLATFORM, EwtApi.BIZ_SUBMIT, extId, 0)
+                .optObj("data")
+        }.getOrNull()
+        first?.str("reportId") ?: first?.str("report") ?: first?.str("id")?.let { return it }
+        val retry = runCatching {
+            EwtEndpoints.initReport(paper.paperId, EwtApi.PLATFORM, EwtApi.BIZ_SUBMIT, extId, 1)
+                .optObj("data")
+        }.getOrNull()
+        retry?.str("reportId") ?: retry?.str("report") ?: retry?.str("id")?.let { return it }
+        throw EwtException("初始化答卷失败：无 reportId")
     }
 
     /** 空交卷解锁：仅上报作答时长，不提交任何答案内容（答案/解析接口在交卷后才返回） */
@@ -307,11 +321,8 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         answers: Map<String, QuestionAnswer>,
     ): String {
         val biz = EwtApi.BIZ_SUBMIT
-        // 新建提交用 report（bizCode=205）
-        val report = EwtEndpoints.getReportId(paper.paperId, EwtApi.PLATFORM, biz).optObj("data")
-            ?: throw EwtException("初始化提交答卷失败")
-        val reportId = report.str("reportId") ?: report.str("report") ?: report.str("id")
-            ?: throw EwtException("初始化提交答卷失败")
+        // 初始化提交用 report（bizCode=205）
+        val reportId = initReportId(paper)
 
         val sel = mutableListOf<JsonObject>()
         val notSel = mutableListOf<JsonObject>()
