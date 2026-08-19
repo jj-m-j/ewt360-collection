@@ -77,10 +77,6 @@ fun AppRoot() {
                 Screen.Home -> HomeScreen(
                     userInfo = userInfo,
                     onOpenPaper = { paper -> screen = Screen.Questions(paper) },
-                    onLogout = {
-                        repo.clearToken()
-                        screen = Screen.Login
-                    },
                 )
                 is Screen.Questions -> QuestionsScreen(
                     paper = s.paper,
