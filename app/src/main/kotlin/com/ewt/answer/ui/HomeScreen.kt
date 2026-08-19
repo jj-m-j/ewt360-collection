@@ -96,6 +96,27 @@ fun HomeScreen(
             onRefresh = { vm.load(force = true) },
             topAppBarScrollBehavior = scrollBehavior,
         ) {
+            // ── 筛选计算（Composable 上下文，勿移入 LazyColumn） ──
+            val readyGroups = (uiState as? HomeViewModel.UiState.Ready)?.groups
+            val allPapers = remember(readyGroups) { readyGroups?.flatMap { it.papers } ?: emptyList() }
+            val dates = remember(allPapers) {
+                allPapers.mapNotNull { it.date.takeIf { d -> d.isNotBlank() } }
+                    .distinct().sortedDescending()
+            }
+            val subjects = remember(allPapers) {
+                allPapers.mapNotNull { it.subjectName.takeIf { s -> s.isNotBlank() } }
+                    .distinct().sorted()
+            }
+            val filteredGroups = remember(readyGroups, dateFilter, subjectFilter) {
+                readyGroups?.mapNotNull { g ->
+                    val fp = g.papers.filter { p ->
+                        (dateFilter == null || p.date == dateFilter) &&
+                            (subjectFilter == null || p.subjectName == subjectFilter)
+                    }
+                    if (fp.isEmpty()) null else g.copy(papers = fp)
+                } ?: emptyList()
+            }
+
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
@@ -158,16 +179,6 @@ fun HomeScreen(
                         }
                     }
                     is HomeViewModel.UiState.Ready -> {
-                        val allPapers = remember(state.groups) { state.groups.flatMap { it.papers } }
-                        val dates = remember(allPapers) {
-                            allPapers.mapNotNull { it.date.takeIf { d -> d.isNotBlank() } }
-                                .distinct().sortedDescending()
-                        }
-                        val subjects = remember(allPapers) {
-                            allPapers.mapNotNull { it.subjectName.takeIf { s -> s.isNotBlank() } }
-                                .distinct().sorted()
-                        }
-
                         if (dates.isNotEmpty()) {
                             item(key = "date_filter") {
                                 FilterRow(
@@ -186,16 +197,6 @@ fun HomeScreen(
                                     selected = subjectFilter,
                                     onSelect = { vm.setSubjectFilter(it) },
                                 )
-                            }
-                        }
-
-                        val filteredGroups = remember(state.groups, dateFilter, subjectFilter) {
-                            state.groups.mapNotNull { g ->
-                                val fp = g.papers.filter { p ->
-                                    (dateFilter == null || p.date == dateFilter) &&
-                                        (subjectFilter == null || p.subjectName == subjectFilter)
-                                }
-                                if (fp.isEmpty()) null else g.copy(papers = fp)
                             }
                         }
 
