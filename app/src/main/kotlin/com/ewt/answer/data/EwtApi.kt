@@ -94,6 +94,7 @@ object EwtApi {
     ): JsonObject = withContext(Dispatchers.IO) { execute(url, headers, body) }
 
     private fun execute(url: String, headers: Map<String, String>, body: JsonObject?): JsonObject {
+        DebugLog.d("API", ">> ${if (body != null) "POST" else "GET"} $url${body?.let { " body=${it.toString().take(300)}" } ?: ""}")
         val builder = Request.Builder()
             .url(url)
             .headers(
@@ -109,18 +110,22 @@ object EwtApi {
         client.newCall(builder.build()).execute().use { resp ->
             val text = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
+                DebugLog.e("API", "HTTP ${resp.code} for $url\n$text.take(500)")
                 throw EwtException("HTTP ${resp.code}", resp.code)
             }
             val element = try {
                 json.parseToJsonElement(text)
             } catch (e: Exception) {
+                DebugLog.e("API", "响应解析失败 for $url\n${text.take(500)}", e)
                 throw EwtException("响应解析失败", 0, e)
             }
             val obj = element as? JsonObject ?: throw EwtException("响应格式异常")
             if (obj["success"]?.jsonPrimitive?.booleanOrNull == false) {
                 val msg = obj["msg"]?.jsonPrimitive?.contentOrNull ?: "接口返回失败"
+                DebugLog.e("API", "业务失败 $url msg=$msg\n${text.take(800)}")
                 throw EwtException(msg)
             }
+            DebugLog.d("API", "<< $url\n${text.take(500)}")
             return obj
         }
     }
@@ -190,6 +195,14 @@ object EwtEndpoints {
         val token = EwtApi.token ?: throw EwtException("未登录")
         val url = "${EwtApi.BASE}/api/answerprod/web/answer/report" +
             "?paperId=$paperId&platform=$platform&extId=$extId&bizCode=$bizCode&reportId=0&isRepeat=$isRepeat&homeworkId=$extId&token=$token"
+        return EwtApi.getJson(url, EwtApi.commonHeaders())
+    }
+
+    /** 查看态 report（JS getReportId：bizCode=201，无额外参数；已做过试卷可用） */
+    suspend fun getReportIdView(paperId: String, platform: String, bizCode: String): JsonObject {
+        val token = EwtApi.token ?: throw EwtException("未登录")
+        val url = "${EwtApi.BASE}/api/answerprod/web/answer/report" +
+            "?paperId=$paperId&platform=$platform&bizCode=$bizCode&token=$token"
         return EwtApi.getJson(url, EwtApi.commonHeaders())
     }
 
