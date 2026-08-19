@@ -27,17 +27,17 @@ class EwtException(message: String, val code: Int = 0, cause: Throwable? = null)
 
 /**
  * EWT360 网关传输层
- *
- * 对应 ewt-getanwser.js 的 BASE / 请求头 / UA 逻辑，
- * 与 EWT-TOOL-main 的 ewtApi.ts（CommonHeader / CourseHeader）逻辑。
+ * 对应 ewt-getanwser.js / EWT-TOOL-main / opt.js 的接口逻辑。
  */
 object EwtApi {
 
     const val BASE = "https://gateway.ewt360.com"
     const val WEB = "https://web.ewt360.com"
-    /** 查看答案使用的 bizCode（JS 中 BIZ_VIEW） */
+    /** 查看答案 */
     const val BIZ_VIEW = "201"
-    /** 作业答题/提交使用的 bizCode（EWT-TOOL-main 使用） */
+    /** 课后习题 */
+    const val BIZ_EXERCISE = "204"
+    /** 作业试卷 */
     const val BIZ_SUBMIT = "205"
     const val PLATFORM = "1"
     const val UA = "Mozilla/5.0"
@@ -56,7 +56,6 @@ object EwtApi {
             .build()
     }
 
-    /** web 端公共请求头（对应 ewtApi.ts COMMON_HEADERS + token） */
     fun commonHeaders(extra: Map<String, String> = emptyMap()): Map<String, String> = buildMap {
         putAll(extra)
         put("Accept", "application/json, text/plain, */*")
@@ -69,7 +68,6 @@ object EwtApi {
         token?.let { put("token", it) }
     }
 
-    /** 课程侧请求头（对应 ewtApi.ts COURSE_HEADERS，作业/试卷接口使用） */
     fun courseHeaders(extra: Map<String, String> = emptyMap()): Map<String, String> = buildMap {
         putAll(extra)
         put("Accept", "application/json, text/plain, */*")
@@ -110,7 +108,7 @@ object EwtApi {
         client.newCall(builder.build()).execute().use { resp ->
             val text = resp.body?.string().orEmpty()
             if (!resp.isSuccessful) {
-                DebugLog.e("API", "HTTP ${resp.code} for $url\n$text.take(500)")
+                DebugLog.e("API", "HTTP ${resp.code} for $url\n${text.take(500)}")
                 throw EwtException("HTTP ${resp.code}", resp.code)
             }
             val element = try {
@@ -150,10 +148,7 @@ fun JsonObject.boolOr(key: String, def: Boolean): Boolean =
 fun JsonObject.doubleOr(key: String, def: Double): Double =
     (this[key] as? JsonPrimitive)?.contentOrNull?.toDoubleOrNull() ?: def
 
-/**
- * 统一“data 双层嵌套”解包：
- * { success, data: [...] } / { success, data: { data: [...] } } / { success, data: { list: [...] } }
- */
+/** 统一“data 双层嵌套”解包 */
 fun JsonObject.unwrapArray(key: String): JsonArray? {
     val data = optObj("data")
     if (data != null) {
@@ -165,26 +160,20 @@ fun JsonObject.unwrapArray(key: String): JsonArray? {
     return optArr("data")
 }
 
-/** 端点封装：与 ewt-getanwser.js / EWT-TOOL-main 一一对应 */
+/** 端点封装：与 ewt-getanwser.js / EWT-TOOL-main / opt.js 一一对应 */
 object EwtEndpoints {
 
     // ── 用户 / 登录态 ────────────────────────────────────────────
 
-    /** 用户基础信息（含 userId / realName）；失败即登录态失效 */
     suspend fun getUserBaseInfo(): JsonObject =
         EwtApi.getJson("${EwtApi.WEB}/api/usercenter/user/baseinfo")
 
-    /** 学校信息（课程侧）→ schoolId */
     suspend fun getSchoolUserInfo(): JsonObject =
         EwtApi.getJson("${EwtApi.BASE}/api/eteacherproduct/school/getSchoolUserInfo", EwtApi.courseHeaders())
 
     // ── 试卷 / 答案 ─────────────────────────────────────────────
 
-    /**
-     * 初始化 / 获取 reportId（EWT-TOOL-main initReport）：
-     * bizCode=205 + extId(homeworkId) + reportId=0 + isRepeat，
-     * 未做过的试卷也能初始化；已做过的试卷在 isRepeat=0 失败后改用 isRepeat=1。
-     */
+    /** 初始化 / 获取 reportId（EWT-TOOL-main initReport） */
     suspend fun initReport(
         paperId: String,
         platform: String,
@@ -198,7 +187,7 @@ object EwtEndpoints {
         return EwtApi.getJson(url, EwtApi.commonHeaders())
     }
 
-    /** 查看态 report（JS getReportId：bizCode=201，无额外参数；已做过试卷可用） */
+    /** 查看态 report（JS getReportId：bizCode=201） */
     suspend fun getReportIdView(paperId: String, platform: String, bizCode: String): JsonObject {
         val token = EwtApi.token ?: throw EwtException("未登录")
         val url = "${EwtApi.BASE}/api/answerprod/web/answer/report" +
@@ -206,7 +195,6 @@ object EwtEndpoints {
         return EwtApi.getJson(url, EwtApi.commonHeaders())
     }
 
-    /** 题组试卷题目（JS getAnswerSheetSubGroup） */
     suspend fun getAnswerSheetSubGroup(paperId: String, reportId: String, platform: String, bizCode: String): JsonObject =
         EwtApi.postJson(
             "${EwtApi.BASE}/api/answerprod/common/answer/sheet/getAnswerSheetSubGroup",
@@ -220,7 +208,6 @@ object EwtEndpoints {
             },
         )
 
-    /** 非题组试卷题目（JS 回退 answerSheetInfo，需要 userId） */
     suspend fun getAnswerSheetInfo(paperId: String, reportId: String, platform: String, bizCode: String, userId: String): JsonObject =
         EwtApi.postJson(
             "${EwtApi.BASE}/api/answerprod/common/answer/answerSheetInfo",
@@ -255,9 +242,9 @@ object EwtEndpoints {
             },
         )
 
-    // ── 作业 / 试卷扫描（EWT-TOOL-main paperScanner.ts） ────────
+    // ── 作业 / 试卷 / 课后习题扫描（EWT-TOOL-main + opt.js） ─────
 
-    /** 学生作业列表（status 1/2/3 轮询后合并去重） */
+    /** 学生作业列表（status 1/2/3） */
     suspend fun getStudentHomeworkInfo(schoolId: String, status: Int): JsonArray? =
         EwtApi.postJson(
             "${EwtApi.BASE}/api/homeworkprod/homework/student/getStudentHomeworkInfo",
@@ -273,36 +260,56 @@ object EwtEndpoints {
             EwtApi.courseHeaders(),
         ).unwrapArray("data")
 
-    /** 作业天数分布（用于按天拉取任务） */
-    suspend fun studentHomeworkDistribution(homeworkIds: List<Long>, schoolId: String): JsonObject =
+    /** 作业日期/学科统计（opt.js getStudentHomeworkDaySubjectStat） */
+    suspend fun getStudentHomeworkDaySubjectStat(schoolId: String, homeworkId: Long): JsonObject =
         EwtApi.postJson(
-            "${EwtApi.BASE}/api/homeworkprod/homework/student/studentHomeworkDistribution",
+            "${EwtApi.BASE}/api/homeworkprod/student/homework/task/getStudentHomeworkDaySubjectStat",
             buildJsonObject {
-                put("homeworkIds", JsonArray(homeworkIds.map { JsonPrimitive(it) }))
-                put("sceneId", 0)
-                put("taskDistributionTypeEnum", 1)
                 put("schoolId", schoolId.toLongOrNull() ?: 0L)
+                put("homeworkId", homeworkId)
+                put("mustLearnSubjectList", JsonArray((1..12).map { JsonPrimitive(it) }))
+                put("queryMustLearn", 1)
             },
             EwtApi.courseHeaders(),
         )
 
-    /** 某天任务列表（含试卷 contentTypeName） */
-    suspend fun pageHomeworkTasks(homeworkId: Long, dayId: String, day: Long, schoolId: String): JsonArray? =
+    /** 任务列表（opt.js：student/homework/task/pageHomeworkTasks，按天或学科） */
+    suspend fun pageHomeworkTasksOpt(schoolId: String, homeworkId: Long, dayId: String?, subjectId: Int?): JsonArray? {
+        val body = buildJsonObject {
+            put("schoolId", schoolId.toLongOrNull() ?: 0L)
+            put("homeworkId", homeworkId)
+            put("mustLearnSubjectList", JsonArray((1..12).map { JsonPrimitive(it) }))
+            put("queryMustLearn", 1)
+            put("pageIndex", 1)
+            put("pageSize", 1000)
+            if (dayId != null) put("dayId", dayId) else if (subjectId != null) put("subjectId", subjectId)
+        }
+        return EwtApi.postJson(
+            "${EwtApi.BASE}/api/homeworkprod/student/homework/task/pageHomeworkTasks",
+            body,
+            EwtApi.courseHeaders(),
+        ).unwrapArray("data")
+    }
+
+    /** 查询课程课后习题（opt.js queryStudentLessonStudyGuideAndPractice） */
+    suspend fun queryStudentLessonStudyGuideAndPractice(
+        schoolId: String,
+        lessonIdList: List<String>,
+        taskIds: List<String>,
+        homeworkId: Long,
+    ): JsonArray? =
         EwtApi.postJson(
-            "${EwtApi.BASE}/api/homeworkprod/homework/student/pageHomeworkTasks",
+            "${EwtApi.BASE}/api/homeworkprod/student/homework/task/queryStudentLessonStudyGuideAndPractice",
             buildJsonObject {
-                put("homeworkIds", JsonArray(listOf(JsonPrimitive(homeworkId))))
-                put("sceneId", 0)
-                put("dayId", JsonArray(listOf(JsonPrimitive(dayId))))
-                put("day", day)
-                put("pageIndex", 1)
-                put("pageSize", 1000)
                 put("schoolId", schoolId.toLongOrNull() ?: 0L)
+                put("lessonIdList", JsonArray(lessonIdList.map { JsonPrimitive(it) }))
+                put("taskIds", JsonArray(taskIds.map { JsonPrimitive(it) }))
+                put("homeworkId", homeworkId)
             },
             EwtApi.courseHeaders(),
         ).unwrapArray("data")
 
-    // ── 提交链路（用户授权；与 EWT-TOOL-main paperFiller 一致） ──
+    // ── 提交链路（EWT-TOOL-main paperFiller 流程） ──────────────
 
     /** 上报作答时长 / 空交卷（JS updateReport，解锁答案用） */
     suspend fun updateReport(paperId: String, reportId: String, platform: String, bizCode: String): JsonObject =
@@ -318,7 +325,7 @@ object EwtEndpoints {
             },
         )
 
-    /** 提交答案（选择题答案 / 非选择题自批项；EWT-TOOL-main submitAnswers） */
+    /** 提交答案（选择题答案 / 非选择题自批项） */
     suspend fun submitAnswer(
         paperId: String,
         reportId: String,
@@ -338,7 +345,7 @@ object EwtEndpoints {
             },
         )
 
-    /** 交卷（EWT-TOOL-main submitPaper） */
+    /** 交卷 */
     suspend fun submitPaper(paperId: String, reportId: String, platform: String, bizCode: String): JsonObject =
         EwtApi.postJson(
             "${EwtApi.BASE}/api/answerprod/web/answer/submitpaper",
@@ -352,7 +359,7 @@ object EwtEndpoints {
             },
         )
 
-    /** 自批（EWT-TOOL-main submitCorrected） */
+    /** 自批 */
     suspend fun submitCorrected(paperId: String, reportId: String, platform: String, bizCode: String): JsonObject =
         EwtApi.postJson(
             "${EwtApi.BASE}/api/answerprod/web/answer/submitCorrected",
