@@ -136,7 +136,7 @@ fun HomeScreen(
                             EmptyHint("暂未找到独立试卷\n请确认作业已布置试卷类任务")
                         }
                     }
-                    HomeViewModel.UiState.Error -> {
+                    is HomeViewModel.UiState.Error -> {
                         item(key = "error") {
                             Column(
                                 Modifier
@@ -154,7 +154,7 @@ fun HomeScreen(
                             }
                         }
                     }
-                    HomeViewModel.UiState.Ready -> {
+                    is HomeViewModel.UiState.Ready -> {
                         state.groups.forEach { group ->
                             item(key = "group_${group.homework.homeworkId}") {
                                 HomeworkHeader(group)
