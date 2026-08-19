@@ -68,30 +68,42 @@ fun AnswerDetailCard(
                 )
             } else {
                 Text(
-                    text = "该题未返回标准答案，请参考下方解析",
+                    text = "未返回标准答案",
                     fontSize = 13.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
             }
 
             // 知识点
+            Spacer(Modifier.height(12.dp))
+            SectionLabel("知识点")
+            Spacer(Modifier.height(4.dp))
             if (a.knowledges.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
-                SectionLabel("知识点")
-                Spacer(Modifier.height(4.dp))
                 Text(
                     text = a.knowledges.joinToString("、"),
                     fontSize = 13.sp,
                     color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 )
+            } else {
+                Text(
+                    text = "暂无",
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
             }
 
-            // 解析
+            // 解析（始终显示）
+            Spacer(Modifier.height(12.dp))
+            SectionLabel("解析")
+            Spacer(Modifier.height(4.dp))
             if (a.analysisHtml.isNotBlank()) {
-                Spacer(Modifier.height(12.dp))
-                SectionLabel("解析")
-                Spacer(Modifier.height(4.dp))
                 RichHtmlText(html = a.analysisHtml)
+            } else {
+                Text(
+                    text = "暂无解析内容",
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
             }
 
             // 附件图片
