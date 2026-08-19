@@ -80,9 +80,10 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
     }
 
     /**
-     * 扫描单个作业下所有 contentUrl 带 paperId= 的任务（试卷 / 课后习题）。
-     * 仅收录真实试卷：contentUrl 中必须出现 paperId= 参数，
-     * 视频课等（courseId/lessonId）不会误收录。
+     * 扫描单个作业下所有可答题任务（试卷 / 课后习题）。
+     * paperId 提取优先级：
+     *   1) contentUrl 中的 paperId= 参数（试卷）
+     *   2) 非视频类任务的 contentId（课后习题 id；视频课的 contentId 是课程/课时 id，必须跳过）
      */
     suspend fun scanHomeworkPapers(schoolId: String, homework: HomeworkItem): List<Paper> {
         val papers = mutableListOf<Paper>()
@@ -103,7 +104,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                         val typeName = task.str("contentTypeName").orEmpty()
                         val paperId = extractPaperId(task)
                         if (paperId == null) {
-                            DebugLog.d("Scan", "非试卷任务跳过: type=$typeName title=${task.str("title")}")
+                            DebugLog.d("Scan", "非答题任务跳过: type=$typeName title=${task.str("title")}")
                             continue
                         }
                         val count = task.str("questionCount")
@@ -161,12 +162,25 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
     }
 
     /**
-     * 提取真实 paperId：仅从 contentUrl 的 paperId= 参数提取。
-     * 不再回退 contentId（视频课等任务的 contentId 是课程/课时 ID，会导致答案串台）。
+     * 提取任务 paperId：
+     * 1) contentUrl 的 paperId= 参数（试卷/带链接的习题）
+     * 2) 非视频类任务回退 contentId（课后习题 id）
+     * 3) 视频课（play-videos / courseId / 课程讲）返回 null，防止把课程 id 当 paperId 导致答案串台
      */
     private fun extractPaperId(task: JsonObject): String? {
+        val typeName = task.str("contentTypeName").orEmpty()
+        // 视频课类任务：contentId 是课程/课时 id，必须跳过
+        if (typeName.contains("课程讲") || typeName.contains("视频") || typeName.contains("微课")) {
+            return null
+        }
         val url = task.str("contentUrl").orEmpty()
-        return Regex("paperId=([^&]+)").find(url)?.groupValues?.get(1)
+        Regex("paperId=([^&]+)").find(url)?.let { return it.groupValues[1] }
+        // URL 是视频播放页也跳过
+        if (url.contains("play-videos") || url.contains("courseId=")) {
+            return null
+        }
+        // 课后习题等：使用 contentId
+        return task.str("contentId")
     }
 
     private fun formatDate(ts: Long): String {
