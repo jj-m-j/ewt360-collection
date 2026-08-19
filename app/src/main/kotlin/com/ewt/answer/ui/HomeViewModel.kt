@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-/** 主页：试卷列表 + 链接查询 + 日期/学科筛选 */
+/** 主页：试卷列表 + 链接查询 + 日期/学科筛选 + 搜索 */
 class HomeViewModel(private val repo: EwtRepository) : ViewModel() {
 
     sealed interface UiState {
@@ -39,6 +39,10 @@ class HomeViewModel(private val repo: EwtRepository) : ViewModel() {
     private val _subjectFilter = MutableStateFlow<String?>(null)
     val subjectFilter: StateFlow<String?> = _subjectFilter
 
+    /** 搜索关键词 */
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery
+
     fun load(force: Boolean = false) {
         if (!force && _uiState.value is UiState.Ready) return
         if (_refreshing.value) return
@@ -64,6 +68,10 @@ class HomeViewModel(private val repo: EwtRepository) : ViewModel() {
 
     fun setSubjectFilter(value: String?) {
         _subjectFilter.value = value
+    }
+
+    fun setSearchQuery(value: String) {
+        _searchQuery.value = value
     }
 
     companion object {
