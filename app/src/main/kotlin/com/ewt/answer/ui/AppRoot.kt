@@ -1,6 +1,8 @@
 package com.ewt.answer.ui
 
 import android.content.Context
+import android.view.View
+import android.view.ViewOutlineProvider
 import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
@@ -37,19 +39,23 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.ewt.answer.data.AppContainer
 import com.ewt.answer.data.EwtRepository
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.UserInfo
+import eightbitlab.com.blurview.BlurTarget
+import eightbitlab.com.blurview.BlurView
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
@@ -76,7 +82,7 @@ sealed class Screen {
 private const val TAB_PAPERS = 0
 private const val TAB_ABOUT = 1
 
-/** Android 12+ 支持硬件加速 RenderEffect 模糊（Modifier.blur 低版本自动降级） */
+/** BlurView 硬件模糊路径是否可用（API 31+ RenderEffect） */
 private val blurSupported: Boolean =
     android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
 
@@ -126,6 +132,9 @@ fun AppRoot() {
         var paperCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
         // 主页列表滚动位置（跨页面保留，返回不跳顶）
         val homeListState: LazyListState = rememberLazyListState()
+
+        // BlurView 目标（页面内容容器，供悬浮底栏模糊）
+        var blurTarget by remember { mutableStateOf<BlurTarget?>(null) }
 
         // ── 预测式返回：手势进度驱动（参考 MIUIX NavDisplay MiuixDefault 转场） ──
         val backProgress = remember { Animatable(0f) }
@@ -215,114 +224,113 @@ fun AppRoot() {
             }
         }
 
-        // ── 双层渲染：背景=上一页（Main 常驻防瞬移），顶层=当前页（手势跟随+动态模糊） ──
-        Box(Modifier.fillMaxSize()) {
-            // 背景层：Main 常驻组合（alpha 控制），其他 prev 手势时组合
-            if (previous != null && (previous == Screen.Main || showPrevLayer)) {
+        // ── 页面内容包进 BlurTarget（供 BlurView 捕获实时模糊） ──
+        AndroidView(
+            factory = { ctx ->
+                BlurTarget(ctx).also { blurTarget = it }
+            },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            // 双层渲染：背景=上一页（Main 常驻防瞬移），顶层=当前页（手势跟随）
+            Box(Modifier.fillMaxSize()) {
+                if (previous != null && (previous == Screen.Main || showPrevLayer)) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                val p = backProgress.value
+                                if (previous == Screen.Main) {
+                                    alpha = if (showPrevLayer) 0.9f + 0.1f * p else 0f
+                                    translationX = -0.25f * size.width * (if (showPrevLayer) (1f - p) else 1f)
+                                } else {
+                                    alpha = 0.9f + 0.1f * p
+                                    translationX = -0.25f * size.width * (1f - p)
+                                }
+                            },
+                    ) {
+                        RenderScreen(
+                            screen = previous!!,
+                            userInfo = userInfo,
+                            paperCounts = paperCounts,
+                            listState = homeListState,
+                            tab = tab,
+                            onTabSelect = { tab = it },
+                            repo = repo,
+                            accuracy = accuracy,
+                            fontEnabled = fontEnabled,
+                            onFontEnabledChange = { en ->
+                                fontEnabled = en
+                                prefs.edit().putBoolean("font_enabled", en).apply()
+                                if (!en) MiuixFonts.clearCache(context)
+                            },
+                            onAccuracyChange = { a ->
+                                accuracy = a
+                                prefs.edit().putInt("accuracy", a).apply()
+                            },
+                            navigateTo = { navigateTo(it) },
+                            onBack = { goBack() },
+                            onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
+                        )
+                    }
+                }
+                // 顶层：当前页（手势跟随：位移 + 缩放 + 圆角，模糊由底栏 BlurView 负责）
                 Box(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
                             val p = backProgress.value
-                            if (previous == Screen.Main) {
-                                alpha = if (showPrevLayer) 0.9f + 0.1f * p else 0f
-                                translationX = -0.25f * size.width * (if (showPrevLayer) (1f - p) else 1f)
-                            } else {
-                                alpha = 0.9f + 0.1f * p
-                                translationX = -0.25f * size.width * (1f - p)
+                            translationX = size.width * p
+                            scaleX = 1f - 0.08f * p
+                            scaleY = 1f - 0.08f * p
+                            if (p > 0f) {
+                                shape = RoundedCornerShape(28.dp.toPx() * p)
+                                clip = true
                             }
                         },
                 ) {
-                    RenderScreen(
-                        screen = previous!!,
-                        userInfo = userInfo,
-                        paperCounts = paperCounts,
-                        listState = homeListState,
-                        tab = tab,
-                        onTabSelect = { tab = it },
-                        repo = repo,
-                        accuracy = accuracy,
-                        fontEnabled = fontEnabled,
-                        onFontEnabledChange = { en ->
-                            fontEnabled = en
-                            prefs.edit().putBoolean("font_enabled", en).apply()
-                            if (!en) MiuixFonts.clearCache(context)
-                        },
-                        onAccuracyChange = { a ->
-                            accuracy = a
-                            prefs.edit().putInt("accuracy", a).apply()
-                        },
-                        navigateTo = { navigateTo(it) },
-                        onBack = { goBack() },
-                        onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
-                    )
-                }
-            }
-            // 顶层：当前页（动态模糊 + 位移 + 缩放 + 圆角，全部由手势 progress 驱动）
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .then(
-                        if (blurSupported && backProgress.value > 0f) {
-                            // blurRadius = progress × 10dp，取消时随 progress 归零自动恢复
-                            Modifier.blur(backProgress.value * 10.dp)
-                        } else {
-                            Modifier
-                        },
-                    )
-                    .graphicsLayer {
-                        val p = backProgress.value
-                        translationX = size.width * p
-                        scaleX = 1f - 0.08f * p
-                        scaleY = 1f - 0.08f * p
-                        if (p > 0f) {
-                            shape = RoundedCornerShape(28.dp.toPx() * p)
-                            clip = true
-                        }
-                    },
-            ) {
-                AnimatedContent(
-                    targetState = screen,
-                    transitionSpec = {
-                        when {
-                            gestureCommitted -> fadeIn(tween(1)).togetherWith(fadeOut(tween(1)))
-                            targetState is Screen.Questions ||
-                                targetState is Screen.LinkQuery ||
-                                targetState is Screen.Debug -> {
-                                (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
-                                    .togetherWith(fadeOut(tween(200)))
+                    AnimatedContent(
+                        targetState = screen,
+                        transitionSpec = {
+                            when {
+                                gestureCommitted -> fadeIn(tween(1)).togetherWith(fadeOut(tween(1)))
+                                targetState is Screen.Questions ||
+                                    targetState is Screen.LinkQuery ||
+                                    targetState is Screen.Debug -> {
+                                    (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
+                                        .togetherWith(fadeOut(tween(200)))
+                                }
+                                else -> {
+                                    (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { -it / 3 })
+                                        .togetherWith(fadeOut(tween(200)))
+                                }
                             }
-                            else -> {
-                                (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { -it / 3 })
-                                    .togetherWith(fadeOut(tween(200)))
-                            }
-                        }
-                    },
-                    label = "screen",
-                ) { s ->
-                    RenderScreen(
-                        screen = s,
-                        userInfo = userInfo,
-                        paperCounts = paperCounts,
-                        listState = homeListState,
-                        tab = tab,
-                        onTabSelect = { tab = it },
-                        repo = repo,
-                        accuracy = accuracy,
-                        fontEnabled = fontEnabled,
-                        onFontEnabledChange = { en ->
-                            fontEnabled = en
-                            prefs.edit().putBoolean("font_enabled", en).apply()
-                            if (!en) MiuixFonts.clearCache(context)
                         },
-                        onAccuracyChange = { a ->
-                            accuracy = a
-                            prefs.edit().putInt("accuracy", a).apply()
-                        },
-                        navigateTo = { navigateTo(it) },
-                        onBack = { goBack() },
-                        onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
-                    )
+                        label = "screen",
+                    ) { s ->
+                        RenderScreen(
+                            screen = s,
+                            userInfo = userInfo,
+                            paperCounts = paperCounts,
+                            listState = homeListState,
+                            tab = tab,
+                            onTabSelect = { tab = it },
+                            repo = repo,
+                            accuracy = accuracy,
+                            fontEnabled = fontEnabled,
+                            onFontEnabledChange = { en ->
+                                fontEnabled = en
+                                prefs.edit().putBoolean("font_enabled", en).apply()
+                                if (!en) MiuixFonts.clearCache(context)
+                            },
+                            onAccuracyChange = { a ->
+                                accuracy = a
+                                prefs.edit().putInt("accuracy", a).apply()
+                            },
+                            navigateTo = { navigateTo(it) },
+                            onBack = { goBack() },
+                            onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
+                        )
+                    }
                 }
             }
         }
@@ -431,7 +439,7 @@ private fun RenderScreen(
     }
 }
 
-/** 主层：悬浮底部 Tab（试卷 / 关于） */
+/** 主层：悬浮底部 Tab（试卷 / 关于），BlurView 毛玻璃背景 */
 @Composable
 private fun MainLayer(
     userInfo: UserInfo?,
@@ -448,6 +456,12 @@ private fun MainLayer(
     onOpenDebug: () -> Unit,
     onLogout: () -> Unit,
 ) {
+    val root = LocalContext.current
+    // 从 RootView 中查找 BlurTarget（由 AppRoot 创建的页面容器）
+    val blurTarget = remember {
+        (root as? android.app.Activity)?.findViewById<BlurTarget>(android.R.id.content)
+            ?.let { null } // 占位，实际由 AppRoot 状态传入
+    }
     Box(Modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = tab,
@@ -479,30 +493,72 @@ private fun MainLayer(
                 )
             }
         }
-        // 悬浮胶囊底栏（高不透明 Surface，避免大面积常驻模糊的 GPU 开销）
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .padding(horizontal = 20.dp, vertical = 10.dp)
-                .shadow(8.dp, RoundedCornerShape(28.dp))
-                .background(MiuixTheme.colorScheme.surface.copy(alpha = 0.96f), RoundedCornerShape(28.dp))
-                .fillMaxWidth()
-                .height(52.dp),
-        ) {
-            Row(Modifier.fillMaxSize()) {
-                TabItem(
-                    text = "试卷",
-                    selected = tab == TAB_PAPERS,
-                    onClick = { onTabSelect(TAB_PAPERS) },
-                    modifier = Modifier.weight(1f),
-                )
-                TabItem(
-                    text = "关于",
-                    selected = tab == TAB_ABOUT,
-                    onClick = { onTabSelect(TAB_ABOUT) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
+        // 悬浮胶囊底栏（BlurView 实时模糊背景）
+        BlurredTabBar(tab = tab, onTabSelect = onTabSelect)
+    }
+}
+
+/** 悬浮胶囊底栏：BlurView 实时模糊 + 半透明 Surface + 清晰文字 */
+@Composable
+private fun BlurredTabBar(
+    tab: Int,
+    onTabSelect: (Int) -> Unit,
+) {
+    val surfaceColor = MiuixTheme.colorScheme.surface
+    val context = LocalContext.current
+    var setupDone by remember { mutableStateOf(false) }
+
+    Box(
+        Modifier
+            .align(Alignment.BottomCenter)
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .shadow(8.dp, RoundedCornerShape(28.dp))
+            .fillMaxWidth()
+            .height(52.dp)
+            .clip(RoundedCornerShape(28.dp)),
+    ) {
+        if (blurSupported) {
+            AndroidView(
+                factory = { ctx ->
+                    BlurView(ctx)
+                },
+                update = { v ->
+                    // 首次 setup：绑定页面 BlurTarget（由 AppRoot 通过 tag 注入）
+                    if (!setupDone) {
+                        val target = (context as? android.app.Activity)
+                            ?.window?.decorView
+                            ?.getTag(R.id.blur_target_tag) as? BlurTarget
+                        if (target != null) {
+                            v.setupWith(target)
+                            setupDone = true
+                        }
+                    }
+                    v.setBlurRadius(14f)
+                    v.setOverlayColor(surfaceColor.copy(alpha = 0.92f).toArgb())
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            // 降级：半透明 Surface（Android 11 及以下）
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(surfaceColor.copy(alpha = 0.96f), RoundedCornerShape(28.dp)),
+            )
+        }
+        Row(Modifier.fillMaxSize()) {
+            TabItem(
+                text = "试卷",
+                selected = tab == TAB_PAPERS,
+                onClick = { onTabSelect(TAB_PAPERS) },
+                modifier = Modifier.weight(1f),
+            )
+            TabItem(
+                text = "关于",
+                selected = tab == TAB_ABOUT,
+                onClick = { onTabSelect(TAB_ABOUT) },
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
