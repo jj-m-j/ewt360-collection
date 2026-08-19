@@ -54,8 +54,8 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.window.WindowDialog
 
 @Composable
 fun QuestionsScreen(
@@ -180,9 +180,9 @@ fun QuestionsScreen(
         }
     }
 
-    // 提交确认对话框
+    // 提交确认对话框（WindowDialog 不依赖 Scaffold，保证可显示）
     if (showSubmitDialog) {
-        OverlayDialog(
+        WindowDialog(
             show = true,
             title = "提交答案",
             summary = "提交后试卷将标记为已交卷",
