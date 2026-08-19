@@ -35,6 +35,7 @@ sealed class Screen {
     data object Login : Screen()
     data object Home : Screen()
     data object LinkQuery : Screen()
+    data object Debug : Screen()
     data class Questions(val paper: Paper) : Screen()
 }
 
@@ -96,10 +97,14 @@ fun AppRoot() {
                     paperCounts = paperCounts,
                     onOpenPaper = { paper -> screen = Screen.Questions(paper) },
                     onOpenLinkQuery = { screen = Screen.LinkQuery },
+                    onOpenDebug = { screen = Screen.Debug },
                 )
                 Screen.LinkQuery -> LinkQueryScreen(
                     onBack = { screen = Screen.Home },
                     onOpenPaper = { paper -> screen = Screen.Questions(paper) },
+                )
+                Screen.Debug -> DebugScreen(
+                    onBack = { screen = Screen.Home },
                 )
                 is Screen.Questions -> QuestionsScreen(
                     paper = s.paper,
