@@ -274,12 +274,19 @@ private fun QuestionRow(
         label = "arrow_rotation",
     )
 
+    // 未获取答案时行不可点击；已获取或失败时可展开查看
+    val onClick: (() -> Unit)? = if (answer != null || failed) {
+        { expanded = !expanded }
+    } else {
+        null
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 3.dp),
         insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        onClick = { expanded = !expanded },
+        onClick = onClick,
     ) {
         Column {
             Row(
