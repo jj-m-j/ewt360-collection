@@ -225,7 +225,7 @@ private fun PaperRow(paper: Paper, onClick: () -> Unit) {
             Spacer(Modifier.size(8.dp))
             IconButton(onClick = onClick, modifier = Modifier.size(32.dp)) {
                 Icon(
-                    imageVector = MiuixIcon.Basic.ArrowRight,
+                    imageVector = MiuixIcons.Basic.ArrowRight,
                     contentDescription = "打开试卷",
                     tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
                 )
@@ -263,7 +263,7 @@ private fun LinkQueryEntry(onClick: () -> Unit) {
                 )
             }
             Icon(
-                imageVector = MiuixIcon.Basic.ArrowRight,
+                imageVector = MiuixIcons.Basic.ArrowRight,
                 contentDescription = "粘贴链接查询",
                 tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
             )
