@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -368,17 +367,31 @@ private fun BottomTabBar(tab: Int, onTabSelect: (Int) -> Unit) {
             .height(54.dp),
     ) {
         Row(Modifier.fillMaxSize()) {
-            TabItem(text = "试卷", selected = tab == TAB_PAPERS) { onTabSelect(TAB_PAPERS) }
-            TabItem(text = "关于", selected = tab == TAB_ABOUT) { onTabSelect(TAB_ABOUT) }
+            TabItem(
+                text = "试卷",
+                selected = tab == TAB_PAPERS,
+                onClick = { onTabSelect(TAB_PAPERS) },
+                modifier = Modifier.weight(1f),
+            )
+            TabItem(
+                text = "关于",
+                selected = tab == TAB_ABOUT,
+                onClick = { onTabSelect(TAB_ABOUT) },
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
 
 @Composable
-private fun TabItem(text: String, selected: Boolean, onClick: () -> Unit) {
+private fun TabItem(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Box(
-        Modifier
-            .weight(1f)
+        modifier
             .fillMaxSize()
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -387,7 +400,7 @@ private fun TabItem(text: String, selected: Boolean, onClick: () -> Unit) {
             text = text,
             fontSize = 15.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariant,
+            color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
             textAlign = TextAlign.Center,
         )
     }
