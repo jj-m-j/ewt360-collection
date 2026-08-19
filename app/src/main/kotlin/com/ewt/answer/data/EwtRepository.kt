@@ -11,6 +11,7 @@ import kotlinx.serialization.json.put
 
 /**
  * 仓库层：组合 EWT-TOOL-main（扫描试卷/刷卷）与 ewt-getanwser.js（获取答案）能力。
+ * 支持作业试卷（bizCode=205）与课后习题（bizCode=204，来自链接 URL）。
  */
 class EwtRepository(private val tokenStore: SecureTokenStore) {
 
@@ -79,9 +80,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         return all
     }
 
-    /**
-     * 扫描单个作业下所有可答题任务（试卷 / 课后习题）。
-     */
+    /** 扫描单个作业下所有可答题任务（试卷）。课后习题不在该接口，走链接查询。 */
     suspend fun scanHomeworkPapers(schoolId: String, homework: HomeworkItem): List<Paper> {
         val papers = mutableListOf<Paper>()
         try {
@@ -101,11 +100,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                         val typeName = task.str("contentTypeName").orEmpty()
                         val paperId = extractPaperId(task)
                         if (paperId == null) {
-                            // 记录完整任务 JSON，便于定位课后习题的真实来源字段
-                            DebugLog.d(
-                                "Scan",
-                                "跳过: type=$typeName title=${task.str("title")}\n${task.toString().take(600)}",
-                            )
+                            DebugLog.d("Scan", "非答题任务跳过: type=$typeName title=${task.str("title")}")
                             continue
                         }
                         val count = task.str("questionCount")
@@ -129,6 +124,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                                 ratio = task.doubleOr("ratio", 0.0).takeIf { it > 0 },
                                 date = dateStr,
                                 subjectName = task.str("subjectName").orEmpty(),
+                                bizCode = EwtApi.BIZ_SUBMIT,
                             ),
                         )
                     }
@@ -162,24 +158,16 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         return groups
     }
 
-    /**
-     * 提取任务 paperId：
-     * 1) 视频课类任务（课程讲/视频/微课、play-videos、courseId）→ null（contentId 是课程 id）
-     * 2) 在整个任务 JSON（含 contentUrl / resourceUrlVO 等嵌套字段）中搜索 paperId=
-     * 3) 兜底 contentId（课后习题等非视频任务）
-     */
+    /** 提取任务 paperId：视频课跳过；非视频任务优先 contentUrl paperId=，兜底 contentId */
     private fun extractPaperId(task: JsonObject): String? {
         val typeName = task.str("contentTypeName").orEmpty()
         val url = task.str("contentUrl").orEmpty()
-        // 视频课类任务：contentId 是课程/课时 id，必须跳过
         if (typeName.contains("课程讲") || typeName.contains("视频") || typeName.contains("微课") ||
             url.contains("play-videos") || url.contains("courseId=")
         ) {
             return null
         }
-        // 整个任务 JSON 中搜索 paperId=（覆盖 contentUrl / resourceUrlVO / previewUrl 等）
         Regex("""paperId[=:]\s*"?(\d+)""").find(task.toString())?.let { return it.groupValues[1] }
-        // 课后习题等：使用 contentId
         return task.str("contentId")
     }
 
@@ -195,7 +183,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     // ── 试卷会话 / 题目 ─────────────────────────────────────────
 
-    /** 打开试卷：多候选初始化 report，返回会话（含真实题数）。 */
+    /** 打开试卷：按试卷 bizCode 初始化 report（205 作业 / 204 课后习题），返回会话。 */
     suspend fun openPaper(paper: Paper): PaperSession {
         val (reportId, bizCode, count) = initReportId(paper)
         return PaperSession(
@@ -208,16 +196,21 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         )
     }
 
-    /** 初始化 report：多候选探测，返回 (reportId, bizCode, questionCount) */
+    /**
+     * 初始化 report：优先按试卷 bizCode 探测（204 课后习题 / 205 作业），失败回退 205 / 201。
+     * 返回 (reportId, bizCode, questionCount)。
+     */
     private suspend fun initReportId(paper: Paper): Triple<String, String, Int> {
         val extId = paper.homeworkId
+        val biz = paper.bizCode
         val attempts = listOf(
+            Triple("$biz+ext$extId+rep0", biz, suspend { EwtEndpoints.initReport(paper.paperId, EwtApi.PLATFORM, biz, extId, 0) }),
+            Triple("$biz+ext$extId+rep1", biz, suspend { EwtEndpoints.initReport(paper.paperId, EwtApi.PLATFORM, biz, extId, 1) }),
+            Triple("$biz+noext", biz, suspend { EwtEndpoints.initReport(paper.paperId, EwtApi.PLATFORM, biz, 0, 0) }),
             Triple("205+ext$extId+rep0", EwtApi.BIZ_SUBMIT, suspend { EwtEndpoints.initReport(paper.paperId, EwtApi.PLATFORM, EwtApi.BIZ_SUBMIT, extId, 0) }),
-            Triple("205+ext$extId+rep1", EwtApi.BIZ_SUBMIT, suspend { EwtEndpoints.initReport(paper.paperId, EwtApi.PLATFORM, EwtApi.BIZ_SUBMIT, extId, 1) }),
-            Triple("205+noext", EwtApi.BIZ_SUBMIT, suspend { EwtEndpoints.initReport(paper.paperId, EwtApi.PLATFORM, EwtApi.BIZ_SUBMIT, 0, 0) }),
             Triple("201+view", EwtApi.BIZ_VIEW, suspend { EwtEndpoints.getReportIdView(paper.paperId, EwtApi.PLATFORM, EwtApi.BIZ_VIEW) }),
         )
-        for ((label, biz, call) in attempts) {
+        for ((label, b, call) in attempts) {
             val result = runCatching { call().optObj("data") }
                 .onFailure { e ->
                     DebugLog.e("Init", "候选[$label] 失败 paperId=${paper.paperId}", e)
@@ -228,25 +221,25 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 if (id != null) {
                     val count = result.intOr("questionCount", 0)
                     DebugLog.d("Init", "候选[$label] 成功 reportId=$id count=$count paperId=${paper.paperId}")
-                    return Triple(id, biz, count)
+                    return Triple(id, b, count)
                 }
             }
         }
-        throw EwtException("初始化答卷失败：无 reportId（已尝试 4 种方式，详见日志）")
+        throw EwtException("初始化答卷失败：无 reportId（已尝试 5 种方式，详见日志）")
     }
 
-    /** 提交专用 report 初始化：强制 205（EWT-TOOL-main 方式），避免混用查看态 report */
-    private suspend fun initSubmitReportId(paper: Paper): String {
+    /** 提交专用 report 初始化：按试卷 bizCode（204/205），isRepeat 0→1 */
+    private suspend fun initSubmitReportId(paper: Paper, biz: String): String {
         val extId = paper.homeworkId
         for (isRepeat in listOf(0, 1)) {
             val id = runCatching {
-                EwtEndpoints.initReport(paper.paperId, EwtApi.PLATFORM, EwtApi.BIZ_SUBMIT, extId, isRepeat)
+                EwtEndpoints.initReport(paper.paperId, EwtApi.PLATFORM, biz, extId, isRepeat)
                     .optObj("data")?.let { it.str("reportId") ?: it.str("report") ?: it.str("id") }
             }.onFailure { e ->
-                DebugLog.e("Submit", "提交 report 初始化失败 isRepeat=$isRepeat paperId=${paper.paperId}", e)
+                DebugLog.e("Submit", "提交 report 初始化失败 biz=$biz isRepeat=$isRepeat paperId=${paper.paperId}", e)
             }.getOrNull()
             if (id != null) {
-                DebugLog.d("Submit", "提交 report 初始化成功 reportId=$id")
+                DebugLog.d("Submit", "提交 report 初始化成功 reportId=$id biz=$biz")
                 return id
             }
         }
@@ -370,15 +363,14 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     // ── 提交（用户确认后调用；EWT-TOOL-main paperFiller 流程） ──
 
-    /** 提交整卷答案并交卷自批。返回结果描述。 */
+    /** 提交整卷答案并交卷自批（按试卷 bizCode：205 作业 / 204 课后习题）。返回结果描述。 */
     suspend fun submitPaperAnswers(
         paper: Paper,
         questions: List<QuestionItem>,
         answers: Map<String, QuestionAnswer>,
     ): String {
-        val biz = EwtApi.BIZ_SUBMIT
-        // 提交强制用 205 初始化 report（不使用查看态 report）
-        val reportId = initSubmitReportId(paper)
+        val biz = paper.bizCode
+        val reportId = initSubmitReportId(paper, biz)
 
         val sel = mutableListOf<JsonObject>()
         val notSel = mutableListOf<JsonObject>()
@@ -410,7 +402,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 )
             }
         }
-        DebugLog.d("Submit", "选择题 ${sel.size} 题，非选择题 ${notSel.size} 题 reportId=$reportId")
+        DebugLog.d("Submit", "biz=$biz 选择题 ${sel.size} 题，非选择题 ${notSel.size} 题 reportId=$reportId")
         if (sel.isNotEmpty()) {
             EwtEndpoints.submitAnswer(paper.paperId, reportId, EwtApi.PLATFORM, biz, JsonArray(sel))
         }
