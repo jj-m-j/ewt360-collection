@@ -266,7 +266,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 ?.mapNotNull { it.str() }
                 ?.filter { it.startsWith("http") }
                 ?: emptyList()
-            val analysisHtml = data.str("analyse").orEmpty()
+            val analysisHtml = extractAnalysisHtml(data)
 
             QuestionAnswer(
                 question = question,
@@ -281,40 +281,27 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
     }
 
     /**
-     * 兼容多种答案字段结构提取答案文本：
+     * 兼容多种答案字段结构提取答案文本（按优先级尝试）：
      * 1) rightAnswer 数组（元素为字符串 / {content|answer} 对象）
      * 2) rightAnswer 字符串（"A,C" / "AB" / JSON 数组字符串 / 纯文本，如语法填空）
-     * 3) 其他候选字段 answer / standardAnswer / correctAnswer / answerContent / rightAnswers / answerList
+     * 3) 其他候选字段 answers / standardAnswer / correctAnswer / answerContent / trueAnswer / answerList …
      */
     private fun extractAnswerText(data: JsonObject): String {
         // 1. rightAnswer 数组
         data.optArr("rightAnswer")?.let { arr ->
-            val items = arr.mapNotNull { el ->
-                when (el) {
-                    is JsonPrimitive -> el.contentOrNull
-                    is JsonObject -> el.str("content") ?: el.str("answer") ?: el.str("value") ?: el.str("rightAnswer")
-                    else -> null
-                }
-            }
-            HtmlCleaner.formatRightAnswer(items).takeIf { it.isNotBlank() }?.let { return it }
+            extractItems(arr)?.let { return it }
         }
         // 2. rightAnswer 字符串
         data.str("rightAnswer")?.let { raw ->
             parseAnswerString(raw)?.let { return it }
         }
         // 3. 候选字段兜底
-        for (key in listOf("answer", "standardAnswer", "correctAnswer", "answerContent", "rightAnswers", "answerList")) {
+        for (key in listOf(
+            "rightAnswers", "answers", "answer", "standardAnswer", "correctAnswer",
+            "answerContent", "trueAnswer", "myAnswer", "answerList",
+        )) {
             when (val v = data[key]) {
-                is JsonArray -> {
-                    val items = v.mapNotNull { el ->
-                        when (el) {
-                            is JsonPrimitive -> el.contentOrNull
-                            is JsonObject -> el.str("content") ?: el.str("answer") ?: el.str("value")
-                            else -> null
-                        }
-                    }
-                    HtmlCleaner.formatRightAnswer(items).takeIf { it.isNotBlank() }?.let { return it }
-                }
+                is JsonArray -> extractItems(v)?.let { return it }
                 is JsonPrimitive -> v.contentOrNull?.let { parseAnswerString(it) }?.let { return it }
                 is JsonObject -> (v.str("content") ?: v.str("answer"))
                     ?.let { HtmlCleaner.clean(it) }
@@ -324,6 +311,18 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
             }
         }
         return ""
+    }
+
+    /** 从数组中提取答案文本（元素为字符串或对象） */
+    private fun extractItems(arr: JsonArray): String? {
+        val items = arr.mapNotNull { el ->
+            when (el) {
+                is JsonPrimitive -> el.contentOrNull
+                is JsonObject -> el.str("content") ?: el.str("answer") ?: el.str("value") ?: el.str("rightAnswer")
+                else -> null
+            }
+        }
+        return HtmlCleaner.formatRightAnswer(items).takeIf { it.isNotBlank() }
     }
 
     /** 解析字符串形式的答案：JSON 数组字符串 / "A,C" / "AC" / 纯文本 */
@@ -341,5 +340,21 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
             return letters.joinToString(", ")
         }
         return HtmlCleaner.clean(t).takeIf { it.isNotBlank() }
+    }
+
+    /** 提取解析 HTML（analyse / analysis 等候选字段，兼容字符串与 {content} 对象） */
+    private fun extractAnalysisHtml(data: JsonObject): String {
+        for (key in listOf(
+            "analyse", "analysis", "analysisContent", "analyseContent",
+            "answerAnalysis", "parse", "parseContent", "explanation",
+        )) {
+            when (val v = data[key]) {
+                is JsonPrimitive -> v.contentOrNull?.let { if (it.isNotBlank()) return it }
+                is JsonObject -> (v.str("content") ?: v.str("text"))
+                    ?.let { if (it.isNotBlank()) return it }
+                else -> {}
+            }
+        }
+        return ""
     }
 }
