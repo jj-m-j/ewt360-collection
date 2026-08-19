@@ -50,6 +50,8 @@ data class QuestionItem(
     val cateId: Int,
     val subjective: Boolean,
     val groupName: String,
+    /** 分值（用于非选择题自批） */
+    val score: Double = 0.0,
 )
 
 /** 单题答案结果 */
@@ -63,6 +65,8 @@ data class QuestionAnswer(
     val knowledges: List<String>,
     /** 附件图片 URL */
     val attachmentImages: List<String>,
+    /** 选择题答案字母（如 ["A","C"]，用于提交） */
+    val choiceAnswers: List<String> = emptyList(),
     /** 接口原始返回（调试用，定位字段结构） */
     val rawJson: String = "",
 )
