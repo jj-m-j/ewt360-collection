@@ -105,7 +105,7 @@ fun QuestionsScreen(
                     CircularProgressIndicator()
                 }
             }
-            QuestionsViewModel.UiState.Error -> {
+            is QuestionsViewModel.UiState.Error -> {
                 Column(
                     Modifier
                         .fillMaxSize()
