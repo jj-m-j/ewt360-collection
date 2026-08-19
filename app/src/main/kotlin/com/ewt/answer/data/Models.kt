@@ -40,6 +40,8 @@ data class PaperSession(
     val bizCode: String,
     val reportId: String,
     val title: String,
+    /** 试卷总题数（report 接口返回，用于主页展示） */
+    val questionCount: Int = 0,
 )
 
 /** 题目（统一结构，兼容题组与非题组） */
