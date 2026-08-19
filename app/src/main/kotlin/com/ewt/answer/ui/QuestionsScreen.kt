@@ -41,6 +41,7 @@ import com.ewt.answer.ui.components.AnswerDetailCard
 import com.ewt.answer.ui.components.QuestionStatusBadge
 import com.ewt.answer.ui.components.questionTypeTag
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
@@ -76,7 +77,6 @@ fun QuestionsScreen(
 
     LaunchedEffect(Unit) { vm.load() }
 
-    // 打开成功后把真实题数回传主页
     LaunchedEffect(uiState) {
         val s = (uiState as? QuestionsViewModel.UiState.Ready)?.session ?: return@LaunchedEffect
         if (s.questionCount > 0) onPaperOpened(s.paperId, s.questionCount)
@@ -217,6 +217,10 @@ fun QuestionsScreen(
                             vm.submitAnswers()
                         },
                         modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            color = MiuixTheme.colorScheme.primary,
+                            contentColor = MiuixTheme.colorScheme.onPrimary,
+                        ),
                     ) {
                         Text("确认", fontSize = 14.sp)
                     }
