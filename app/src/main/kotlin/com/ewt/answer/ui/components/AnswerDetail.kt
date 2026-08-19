@@ -61,22 +61,68 @@ fun AnswerDetailCard(
             }
         }
         answer?.let { a ->
-            // 答案
+            // 答案（复合题子题分段展示，父题不堆叠）
             SectionLabel("答案")
             Spacer(Modifier.height(4.dp))
-            if (a.answer.isNotBlank()) {
-                Text(
-                    text = a.answer,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MiuixTheme.colorScheme.primary,
-                )
-            } else {
-                Text(
-                    text = "未返回标准答案",
-                    fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
+            when {
+                a.childItems.isNotEmpty() -> {
+                    Text(
+                        text = "复合题，子题答案见下方",
+                        fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+                a.answer.isNotBlank() -> {
+                    Text(
+                        text = a.answer,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MiuixTheme.colorScheme.primary,
+                    )
+                }
+                else -> {
+                    Text(
+                        text = "未返回标准答案",
+                        fontSize = 13.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+            }
+
+            // 子题（混合题型 (1)(2)(3)… 分段显示）
+            if (a.childItems.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                a.childItems.forEach { child ->
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                    ) {
+                        Text(
+                            text = "${child.num}  ${child.answer.ifBlank { "(主观题)" }}",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MiuixTheme.colorScheme.primary,
+                        )
+                        if (child.knowledge.isNotBlank()) {
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                text = "知识点：${child.knowledge}",
+                                fontSize = 12.sp,
+                                color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                            )
+                        }
+                        if (child.analysisHtml.isNotBlank()) {
+                            Spacer(Modifier.height(3.dp))
+                            RichHtmlText(html = child.analysisHtml)
+                        }
+                        if (child.images.isNotEmpty()) {
+                            Spacer(Modifier.height(6.dp))
+                            AttachmentImageList(child.images)
+                        }
+                        Spacer(Modifier.height(6.dp))
+                    }
+                }
             }
 
             // 知识点
@@ -97,18 +143,20 @@ fun AnswerDetailCard(
                 )
             }
 
-            // 解析（始终显示）
-            Spacer(Modifier.height(12.dp))
-            SectionLabel("解析")
-            Spacer(Modifier.height(4.dp))
-            if (a.analysisHtml.isNotBlank()) {
-                RichHtmlText(html = a.analysisHtml)
-            } else {
-                Text(
-                    text = "暂无解析内容",
-                    fontSize = 12.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
+            // 解析（始终显示；复合题父题无解析时不再重复子题解析）
+            if (a.childItems.isEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                SectionLabel("解析")
+                Spacer(Modifier.height(4.dp))
+                if (a.analysisHtml.isNotBlank()) {
+                    RichHtmlText(html = a.analysisHtml)
+                } else {
+                    Text(
+                        text = "暂无解析内容",
+                        fontSize = 12.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                }
             }
 
             // 附件图片
@@ -119,7 +167,7 @@ fun AnswerDetailCard(
             }
 
             // 调试：答案与解析均未提取到时，展示接口原始返回
-            if (a.answer.isBlank() && a.analysisHtml.isBlank() && a.rawJson.isNotBlank()) {
+            if (a.answer.isBlank() && a.analysisHtml.isBlank() && a.childItems.isEmpty() && a.rawJson.isNotBlank()) {
                 var showRaw by remember { mutableStateOf(false) }
                 Spacer(Modifier.height(10.dp))
                 TextButton(
