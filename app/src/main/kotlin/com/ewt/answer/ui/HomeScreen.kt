@@ -60,6 +60,7 @@ import top.yukonga.miuix.kmp.window.WindowDialog
 @Composable
 fun HomeScreen(
     userInfo: UserInfo?,
+    paperCounts: Map<String, Int>,
     onOpenPaper: (Paper) -> Unit,
     onOpenLinkQuery: () -> Unit,
 ) {
@@ -210,7 +211,11 @@ fun HomeScreen(
                                     HomeworkHeader(group)
                                 }
                                 items(group.papers, key = { it.paperId }) { paper ->
-                                    PaperRow(paper = paper, onClick = { onOpenPaper(paper) })
+                                    PaperRow(
+                                        paper = paper,
+                                        count = paperCounts[paper.paperId],
+                                        onClick = { onOpenPaper(paper) },
+                                    )
                                 }
                             }
                         }
@@ -282,7 +287,11 @@ private fun HomeworkHeader(group: HomeworkGroup) {
 }
 
 @Composable
-private fun PaperRow(paper: Paper, onClick: () -> Unit) {
+private fun PaperRow(
+    paper: Paper,
+    count: Int?,
+    onClick: () -> Unit,
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -304,13 +313,17 @@ private fun PaperRow(paper: Paper, onClick: () -> Unit) {
                     color = MiuixTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.height(4.dp))
+                // 题数：优先使用打开试卷后回传的真实题数，其次扫描字段
+                val countText = count?.takeIf { it > 0 }?.let { "共 $it 题" }
+                    ?: paper.questionCount.takeIf { it != "?" }?.let { "共 $it 题" }
+                    ?: ""
                 val meta = listOfNotNull(
                     paper.date.takeIf { it.isNotBlank() },
                     paper.subjectName.takeIf { it.isNotBlank() },
-                    "共 ${paper.questionCount} 题",
+                    countText,
                 ).joinToString(" · ")
                 Text(
-                    text = meta,
+                    text = meta.ifBlank { "打开查看详情" },
                     fontSize = 12.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
