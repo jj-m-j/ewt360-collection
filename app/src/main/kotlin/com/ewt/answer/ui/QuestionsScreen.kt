@@ -61,6 +61,7 @@ import top.yukonga.miuix.kmp.window.WindowDialog
 fun QuestionsScreen(
     paper: Paper,
     onBack: () -> Unit,
+    onPaperOpened: (String, Int) -> Unit = { _, _ -> },
 ) {
     val vm: QuestionsViewModel = viewModel(key = "questions_${paper.paperId}", factory = QuestionsViewModel.factory(paper))
     val uiState by vm.uiState.collectAsState()
@@ -74,6 +75,12 @@ fun QuestionsScreen(
     var showSubmitDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { vm.load() }
+
+    // 打开成功后把真实题数回传主页
+    LaunchedEffect(uiState) {
+        val s = (uiState as? QuestionsViewModel.UiState.Ready)?.session ?: return@LaunchedEffect
+        if (s.questionCount > 0) onPaperOpened(s.paperId, s.questionCount)
+    }
 
     val scrollBehavior = MiuixScrollBehavior()
 
