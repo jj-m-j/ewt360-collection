@@ -11,14 +11,6 @@ import kotlinx.serialization.json.put
 
 /**
  * 仓库层：组合 EWT-TOOL-main（扫描试卷/刷卷）与 ewt-getanwser.js（获取答案）能力。
- *
- * 数据流：
- * 扫描任务（作业内所有带 paperId 的任务：试卷 / 课后习题）
- *   → initReport 多候选探测（205 带参 → 205 isRepeat=1 → 201 查看态）
- *   → 题目列表（题组 getAnswerSheetSubGroup / 非题组 answerSheetInfo）
- *   → 空交卷解锁（updateReport，答案接口在交卷后才返回答案/解析）
- *   → 逐题答案（simple/question/analysis）
- *   → 提交（用户确认后）：submitAnswer（选择题标准答案 + 非选择题自批）+ submitPaper + submitCorrected
  */
 class EwtRepository(private val tokenStore: SecureTokenStore) {
 
@@ -113,14 +105,25 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                             DebugLog.d("Scan", "无 paperId 跳过: type=$typeName title=${task.str("title")}")
                             continue
                         }
-                        DebugLog.d("Scan", "收录任务: type=$typeName title=${task.str("title")} paperId=$paperId")
+                        val count = task.str("questionCount")
+                            ?: task.str("questionNum")
+                            ?: task.str("questionNumber")
+                            ?: task.str("totalCount")
+                            ?: task.str("count")
+                            ?: "?"
+                        // 记录任务关键字段，便于定位“答案串台/题数缺失”
+                        DebugLog.d(
+                            "Scan",
+                            "收录: type=$typeName title=${task.str("title")} paperId=$paperId count=$count " +
+                                "contentUrl=${task.str("contentUrl")}",
+                        )
                         papers.add(
                             Paper(
                                 homeworkId = homework.homeworkId,
                                 homeworkTitle = homework.title,
                                 paperId = paperId,
                                 title = task.str("title") ?: "未知任务",
-                                questionCount = task.str("questionCount") ?: "?",
+                                questionCount = count,
                                 ratio = task.doubleOr("ratio", 0.0).takeIf { it > 0 },
                                 date = dateStr,
                                 subjectName = task.str("subjectName").orEmpty(),
@@ -175,13 +178,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     // ── 试卷会话 / 题目 ─────────────────────────────────────────
 
-    /**
-     * 打开试卷：多候选初始化 report，返回 (reportId, bizCode)。
-     * 候选顺序：
-     *   1) 205 + extId + isRepeat=0（EWT-TOOL-main，未做试卷可初始化）
-     *   2) 205 + extId + isRepeat=1（已做过试卷重试）
-     *   3) 201 查看态（JS，已做过试卷可用）
-     */
+    /** 打开试卷：多候选初始化 report，返回 (reportId, bizCode)。 */
     suspend fun openPaper(paper: Paper): PaperSession {
         val (reportId, bizCode) = initReportId(paper)
         return PaperSession(
@@ -193,6 +190,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         )
     }
 
+    /** 初始化 report：多候选探测（205 带参 → 205 重试 → 205 无参 → 201 查看态） */
     private suspend fun initReportId(paper: Paper): Pair<String, String> {
         val extId = paper.homeworkId
         val attempts = listOf(
@@ -216,7 +214,25 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         throw EwtException("初始化答卷失败：无 reportId（已尝试 4 种方式，详见日志）")
     }
 
-    /** 空交卷解锁：仅上报作答时长，不提交任何答案内容（答案/解析接口在交卷后才返回） */
+    /** 提交专用 report 初始化：强制 205（EWT-TOOL-main 方式），避免混用查看态 report */
+    private suspend fun initSubmitReportId(paper: Paper): String {
+        val extId = paper.homeworkId
+        for (isRepeat in listOf(0, 1)) {
+            val id = runCatching {
+                EwtEndpoints.initReport(paper.paperId, EwtApi.PLATFORM, EwtApi.BIZ_SUBMIT, extId, isRepeat)
+                    .optObj("data")?.let { it.str("reportId") ?: it.str("report") ?: it.str("id") }
+            }.onFailure { e ->
+                DebugLog.e("Submit", "提交 report 初始化失败 isRepeat=$isRepeat paperId=${paper.paperId}", e)
+            }.getOrNull()
+            if (id != null) {
+                DebugLog.d("Submit", "提交 report 初始化成功 reportId=$id")
+                return id
+            }
+        }
+        throw EwtException("初始化提交答卷失败：无 reportId")
+    }
+
+    /** 空交卷解锁：仅上报作答时长，不提交任何答案内容 */
     suspend fun unlockPaper(session: PaperSession) {
         DebugLog.d("Unlock", "空交卷解锁 paperId=${session.paperId} reportId=${session.reportId} biz=${session.bizCode}")
         EwtEndpoints.updateReport(session.paperId, session.reportId, session.platform, session.bizCode)
@@ -260,7 +276,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 )
             }
         }
-        DebugLog.d("Ques", "题组题目 ${questions.size} 道 paperId=${session.paperId}")
+        DebugLog.d("Ques", "题组题目 ${questions.size} 道 paperId=${session.paperId} reportId=${session.reportId} biz=${session.bizCode}")
         return questions
     }
 
@@ -293,9 +309,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     // ── 答案获取（ewt-getanwser.js） ────────────────────────────
 
-    /**
-     * 获取单题答案。返回 null 表示该题获取失败（不抛异常，避免单题拖垮整体）。
-     */
+    /** 获取单题答案。返回 null 表示该题获取失败（不抛异常，避免单题拖垮整体）。 */
     suspend fun fetchAnswer(session: PaperSession, question: QuestionItem): QuestionAnswer? {
         return try {
             val data = EwtEndpoints.getQuestionAnalysis(
@@ -335,21 +349,15 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     // ── 提交（用户确认后调用；EWT-TOOL-main paperFiller 流程） ──
 
-    /**
-     * 提交整卷答案并交卷自批：
-     * - 选择题：提交标准答案字母
-     * - 非选择题：提交占位答案并标记 revision 自批（EWT-TOOL-main 逻辑）
-     * - submitpaper 交卷 → submitCorrected 自批
-     * 返回结果描述。
-     */
+    /** 提交整卷答案并交卷自批。返回结果描述。 */
     suspend fun submitPaperAnswers(
         paper: Paper,
         questions: List<QuestionItem>,
         answers: Map<String, QuestionAnswer>,
     ): String {
         val biz = EwtApi.BIZ_SUBMIT
-        // 初始化提交用 report（bizCode=205）
-        val reportId = initReportId(paper).first
+        // 提交强制用 205 初始化 report（不使用查看态 report）
+        val reportId = initSubmitReportId(paper)
 
         val sel = mutableListOf<JsonObject>()
         val notSel = mutableListOf<JsonObject>()
@@ -357,7 +365,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
             val a = answers[q.questionId] ?: continue
             val opts = a.choiceAnswers
             if (opts.isNotEmpty()) {
-                // 选择题：提交答案字母
                 sel.add(
                     buildJsonObject {
                         put("questionId", q.questionId)
@@ -368,7 +375,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                     },
                 )
             } else {
-                // 非选择题：占位答案 + revision 自批
                 notSel.add(
                     buildJsonObject {
                         put("questionId", q.questionId)
@@ -397,22 +403,13 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     // ── 字段提取辅助 ────────────────────────────────────────────
 
-    /**
-     * 兼容多种答案字段结构提取答案文本（按优先级尝试）：
-     * 1) rightAnswer 数组（元素为字符串 / {content|answer} 对象）
-     * 2) rightAnswer 字符串（"A,C" / "AB" / JSON 数组字符串 / 纯文本，如语法填空）
-     * 3) 其他候选字段 answers / standardAnswer / correctAnswer / answerContent / trueAnswer / answerList …
-     */
     private fun extractAnswerText(data: JsonObject): String {
-        // 1. rightAnswer 数组
         data.optArr("rightAnswer")?.let { arr ->
             extractItems(arr)?.let { return it }
         }
-        // 2. rightAnswer 字符串
         data.str("rightAnswer")?.let { raw ->
             parseAnswerString(raw)?.let { return it }
         }
-        // 3. 候选字段兜底
         for (key in listOf(
             "rightAnswers", "answers", "answer", "standardAnswer", "correctAnswer",
             "answerContent", "trueAnswer", "myAnswer", "answerList",
@@ -430,7 +427,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         return ""
     }
 
-    /** 提取选择题答案字母列表（用于提交） */
     private fun extractChoiceList(data: JsonObject): List<String> {
         data.optArr("rightAnswer")?.let { arr ->
             val items = arr.mapNotNull { el ->
@@ -455,7 +451,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         return emptyList()
     }
 
-    /** 从数组中提取答案文本（元素为字符串或对象） */
     private fun extractItems(arr: JsonArray): String? {
         val items = arr.mapNotNull { el ->
             when (el) {
@@ -467,7 +462,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         return HtmlCleaner.formatRightAnswer(items).takeIf { it.isNotBlank() }
     }
 
-    /** 解析字符串形式的答案：JSON 数组字符串 / "A,C" / "AC" / 纯文本 */
     private fun parseAnswerString(raw: String): String? {
         val t = raw.trim()
         if (t.isEmpty()) return null
@@ -484,7 +478,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         return HtmlCleaner.clean(t).takeIf { it.isNotBlank() }
     }
 
-    /** 提取解析 HTML（analyse / analysis 等候选字段，兼容字符串与 {content} 对象） */
     private fun extractAnalysisHtml(data: JsonObject): String {
         for (key in listOf(
             "analyse", "analysis", "analysisContent", "analyseContent",
