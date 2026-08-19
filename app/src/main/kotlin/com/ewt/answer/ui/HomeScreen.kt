@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,6 +42,7 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
@@ -49,6 +52,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun HomeScreen(
     userInfo: UserInfo?,
     paperCounts: Map<String, Int>,
+    listState: LazyListState,
     onOpenPaper: (Paper) -> Unit,
     onOpenLinkQuery: () -> Unit,
     onOpenDebug: () -> Unit,
@@ -60,6 +64,14 @@ fun HomeScreen(
     val statusText by vm.statusText.collectAsState()
     val dateFilter by vm.dateFilter.collectAsState()
     val subjectFilter by vm.subjectFilter.collectAsState()
+    val searchQuery by vm.searchQuery.collectAsState()
+
+    val searchState = rememberTextFieldState()
+    LaunchedEffect(searchQuery) {
+        if (searchState.text.toString() != searchQuery) {
+            searchState.edit { replace(0, length, searchQuery) }
+        }
+    }
 
     LaunchedEffect(Unit) { vm.load() }
 
@@ -105,8 +117,22 @@ fun HomeScreen(
                     if (fp.isEmpty()) null else g.copy(papers = fp)
                 } ?: emptyList()
             }
+            // 搜索过滤 + 按日期分组（默认按日期倒序展示）
+            val searchLower = remember(searchQuery) { searchQuery.trim().lowercase() }
+            val dateGroups = remember(filteredGroups, searchLower) {
+                filteredGroups.flatMap { it.papers }
+                    .filter { p ->
+                        searchLower.isEmpty() ||
+                            p.title.lowercase().contains(searchLower) ||
+                            p.homeworkTitle.lowercase().contains(searchLower) ||
+                            p.subjectName.lowercase().contains(searchLower)
+                    }
+                    .groupBy { it.date.ifBlank { "其他" } }
+                    .toSortedMap(compareByDescending { it })
+            }
 
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
                     start = 16.dp,
@@ -118,6 +144,15 @@ fun HomeScreen(
             ) {
                 item(key = "link") {
                     LinkQueryEntry(onClick = onOpenLinkQuery)
+                }
+                item(key = "search") {
+                    TextField(
+                        state = searchState,
+                        label = "搜索试卷 / 课后习题",
+                        useLabelAsPlaceholder = true,
+                        onValueChange = { vm.setSearchQuery(it) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
 
                 when (val state = uiState) {
@@ -189,16 +224,18 @@ fun HomeScreen(
                             }
                         }
 
-                        if (filteredGroups.isEmpty()) {
+                        if (dateGroups.isEmpty()) {
                             item(key = "filtered_empty") {
-                                EmptyHint("当前筛选条件下没有任务")
+                                EmptyHint("当前筛选 / 搜索条件下没有任务")
                             }
                         } else {
-                            filteredGroups.forEach { group ->
-                                item(key = "group_${group.homework.homeworkId}") {
-                                    HomeworkHeader(group)
+                            dateGroups.forEach { (date, papers) ->
+                                item(key = "date_$date") {
+                                    SmallTitle(
+                                        text = if (date == "其他") "未分类" else date,
+                                    )
                                 }
-                                items(group.papers, key = { it.paperId }) { paper ->
+                                items(papers, key = { it.paperId }) { paper ->
                                     PaperRow(
                                         paper = paper,
                                         count = paperCounts[paper.paperId],
@@ -302,7 +339,7 @@ private fun PaperRow(
                     ?: paper.questionCount.takeIf { it != "?" }?.let { "共 $it 题" }
                     ?: ""
                 val meta = listOfNotNull(
-                    paper.date.takeIf { it.isNotBlank() },
+                    paper.homeworkTitle.takeIf { it.isNotBlank() && it != "通过链接导入" },
                     paper.subjectName.takeIf { it.isNotBlank() },
                     countText,
                 ).joinToString(" · ")
@@ -310,6 +347,8 @@ private fun PaperRow(
                     text = meta.ifBlank { "打开查看详情" },
                     fontSize = 12.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
             Spacer(Modifier.size(8.dp))
