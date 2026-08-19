@@ -80,7 +80,6 @@ public class BlurView extends FrameLayout {
      * @param target      the root to start blur from.
      * @param algorithm   sets the blur algorithm. Ignored on API >= 29 where a hardware rendering pipeline is used.
      * @param scaleFactor a scale factor to downscale the view snapshot before blurring.
-     *                    Helps achieving stronger blur and potentially better performance at the expense of blur precision.
      *                    The blur radius is essentially the radius * scaleFactor.
      * @param applyNoise  optional blue noise texture over the blurred content to make it look more natural. True by default.
      * @return {@link BlurView} to setup needed params.
@@ -108,8 +107,6 @@ public class BlurView extends FrameLayout {
      *                    BlurAlgorithm is automatically picked based on the API version.
      *                    It uses RenderEffect on API 31+, OpenGL on API 29-30, and RenderScriptBlur below that.
      * @param scaleFactor a scale factor to downscale the view snapshot before blurring.
-     *                    Helps achieving stronger blur and potentially better performance at the expense of blur precision.
-     *                    The blur radius is essentially the radius * scaleFactor.
      * @param applyNoise  optional blue noise texture over the blurred content to make it look more natural. True by default.
      * @return {@link BlurView} to setup needed params.
      */
