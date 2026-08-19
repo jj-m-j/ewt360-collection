@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-/** 主页：试卷列表 + 链接查询 */
+/** 主页：试卷列表 + 链接查询 + 日期/学科筛选 */
 class HomeViewModel(private val repo: EwtRepository) : ViewModel() {
 
     sealed interface UiState {
@@ -31,6 +31,14 @@ class HomeViewModel(private val repo: EwtRepository) : ViewModel() {
     private val _statusText = MutableStateFlow("")
     val statusText: StateFlow<String> = _statusText
 
+    /** 日期筛选（"MM-dd" 或 null=全部） */
+    private val _dateFilter = MutableStateFlow<String?>(null)
+    val dateFilter: StateFlow<String?> = _dateFilter
+
+    /** 学科筛选（学科名或 null=全部） */
+    private val _subjectFilter = MutableStateFlow<String?>(null)
+    val subjectFilter: StateFlow<String?> = _subjectFilter
+
     fun load(force: Boolean = false) {
         if (!force && _uiState.value is UiState.Ready) return
         if (_refreshing.value) return
@@ -48,6 +56,14 @@ class HomeViewModel(private val repo: EwtRepository) : ViewModel() {
                 _refreshing.value = false
             }
         }
+    }
+
+    fun setDateFilter(value: String?) {
+        _dateFilter.value = value
+    }
+
+    fun setSubjectFilter(value: String?) {
+        _subjectFilter.value = value
     }
 
     companion object {
