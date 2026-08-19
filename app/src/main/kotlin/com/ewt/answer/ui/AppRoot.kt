@@ -1,29 +1,42 @@
 package com.ewt.answer.ui
 
-import androidx.activity.compose.BackHandler
+import androidx.activity.BackEventCompat
+import androidx.activity.OnBackPressedCallback
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.unit.dp
 import com.ewt.answer.data.AppContainer
+import com.ewt.answer.data.EwtRepository
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.UserInfo
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.TextStyles
@@ -59,19 +72,84 @@ fun AppRoot() {
     MiuixTheme(colors = colors, textStyles = textStyles) {
         val repo = AppContainer.repository
         var screen by remember { mutableStateOf<Screen>(Screen.Boot) }
+        var previous by remember { mutableStateOf<Screen?>(null) }
         var userInfo by remember { mutableStateOf<UserInfo?>(null) }
         // paperId → 真实题数（打开试卷后回传，主页展示）
         var paperCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
         // 主页列表滚动位置（跨页面保留，返回不跳顶）
         val homeListState: LazyListState = rememberLazyListState()
 
-        // 系统返回键/侧滑手势：二级页面返回上一级，不退出应用
-        BackHandler(enabled = screen !is Screen.Home && screen !is Screen.Login && screen !is Screen.Boot) {
-            screen = when (screen) {
-                is Screen.Questions -> Screen.Home
-                Screen.LinkQuery -> Screen.Home
-                Screen.Debug -> Screen.Home
-                else -> screen
+        // ── 预测式返回：手势进度驱动（参考 MIUIX NavDisplay MiuixDefault 转场） ──
+        val backProgress = remember { Animatable(0f) }
+        var showPrevLayer by remember { mutableStateOf(false) }
+        var gestureCommitted by remember { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
+
+        fun navigateTo(target: Screen) {
+            if (target != screen) {
+                previous = screen
+                screen = target
+                showPrevLayer = false
+                scope.launch { backProgress.snapTo(0f) }
+            }
+        }
+
+        fun goBack() {
+            val prev = previous
+            if (prev != null) {
+                gestureCommitted = true
+                screen = prev
+                previous = null
+                showPrevLayer = false
+            } else {
+                scope.launch { backProgress.snapTo(0f) }
+            }
+        }
+
+        // 系统预测式返回回调：手势开始/进度/取消/完成
+        val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+        val backCallback = remember {
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackStarted(backEvent: BackEventCompat) {
+                    if (previous != null) {
+                        showPrevLayer = true
+                        gestureCommitted = false
+                        scope.launch { backProgress.snapTo(backEvent.progress) }
+                    }
+                }
+
+                override fun handleOnBackProgressed(backEvent: BackEventCompat) {
+                    scope.launch { backProgress.snapTo(backEvent.progress) }
+                }
+
+                override fun handleOnBackCancelled() {
+                    showPrevLayer = false
+                    scope.launch {
+                        backProgress.animateTo(
+                            0f,
+                            spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                        )
+                    }
+                }
+
+                override fun handleOnBackPressed() {
+                    goBack()
+                }
+            }
+        }
+        DisposableEffect(dispatcher, backCallback) {
+            dispatcher?.addCallback(backCallback)
+            onDispose { backCallback.remove() }
+        }
+        // 仅二级页面启用返回手势（一级页面由系统处理退出）
+        backCallback.isEnabled =
+            screen !is Screen.Home && screen !is Screen.Login && screen !is Screen.Boot
+
+        // 手势完成切屏后：进度归零、恢复正常转场
+        LaunchedEffect(gestureCommitted) {
+            if (gestureCommitted) {
+                backProgress.snapTo(0f)
+                gestureCommitted = false
             }
         }
 
@@ -90,51 +168,125 @@ fun AppRoot() {
             }
         }
 
-        AnimatedContent(
-            targetState = screen,
-            // 轻量淡入淡出（无位移），避免大列表重组时滑动手势掉帧
-            transitionSpec = {
-                fadeIn(animationSpec = tween(140))
-                    .togetherWith(fadeOut(animationSpec = tween(120)))
-            },
-            label = "screen",
-        ) { s ->
-            when (s) {
-                Screen.Boot -> BootScreen()
-                Screen.Login -> LoginScreen(
-                    onLoggedIn = { info ->
-                        userInfo = info
-                        screen = Screen.Home
+        // ── 双层渲染：背景=上一页（手势时可见），顶层=当前页（手势跟随） ──
+        Box(Modifier.fillMaxSize()) {
+            if (showPrevLayer && previous != null) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            val p = backProgress.value
+                            // 被覆盖页：向左 1/4 视差 + 透明度恢复（MIUIX MiuixDefault covered）
+                            translationX = -0.25f * size.width * p
+                            alpha = 0.9f + 0.1f * p
+                        },
+                ) {
+                    RenderScreen(
+                        screen = previous!!,
+                        userInfo = userInfo,
+                        paperCounts = paperCounts,
+                        listState = homeListState,
+                        repo = repo,
+                        navigateTo = { navigateTo(it) },
+                        onBack = { goBack() },
+                        onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
+                    )
+                }
+            }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val p = backProgress.value
+                        // 当前页：向右全宽滑出 + 缩放 + 圆角 clip（MIUIX 顶部页 + 系统预测式返回风格）
+                        translationX = size.width * p
+                        scaleX = 1f - 0.08f * p
+                        scaleY = 1f - 0.08f * p
+                        if (p > 0f) {
+                            shape = RoundedCornerShape(28.dp.toPx() * p)
+                            clip = true
+                        }
                     },
-                )
-                Screen.Home -> HomeScreen(
-                    userInfo = userInfo,
-                    paperCounts = paperCounts,
-                    listState = homeListState,
-                    onOpenPaper = { paper -> screen = Screen.Questions(paper) },
-                    onOpenLinkQuery = { screen = Screen.LinkQuery },
-                    onOpenDebug = { screen = Screen.Debug },
-                    onLogout = {
-                        repo.clearToken()
-                        screen = Screen.Login
+            ) {
+                AnimatedContent(
+                    targetState = screen,
+                    transitionSpec = {
+                        when {
+                            // 手势完成：无动画（视觉已由手势完成）
+                            gestureCommitted -> fadeIn(tween(1)).togetherWith(fadeOut(tween(1)))
+                            // 进入二级页面：从右侧滑入
+                            targetState is Screen.Questions ||
+                                targetState is Screen.LinkQuery ||
+                                targetState is Screen.Debug -> {
+                                (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
+                                    .togetherWith(fadeOut(tween(200)))
+                            }
+                            // 返回一级页面：从左侧滑回
+                            else -> {
+                                (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { -it / 3 })
+                                    .togetherWith(fadeOut(tween(200)))
+                            }
+                        }
                     },
-                )
-                Screen.LinkQuery -> LinkQueryScreen(
-                    onBack = { screen = Screen.Home },
-                    onOpenPaper = { paper -> screen = Screen.Questions(paper) },
-                )
-                Screen.Debug -> DebugScreen(
-                    onBack = { screen = Screen.Home },
-                )
-                is Screen.Questions -> QuestionsScreen(
-                    paper = s.paper,
-                    onBack = { screen = Screen.Home },
-                    onPaperOpened = { paperId, count ->
-                        if (count > 0) paperCounts = paperCounts + (paperId to count)
-                    },
-                )
+                    label = "screen",
+                ) { s ->
+                    RenderScreen(
+                        screen = s,
+                        userInfo = userInfo,
+                        paperCounts = paperCounts,
+                        listState = homeListState,
+                        repo = repo,
+                        navigateTo = { navigateTo(it) },
+                        onBack = { goBack() },
+                        onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
+                    )
+                }
             }
         }
+    }
+}
+
+/** 渲染单个页面（供顶层与背景层复用） */
+@Composable
+private fun RenderScreen(
+    screen: Screen,
+    userInfo: UserInfo?,
+    paperCounts: Map<String, Int>,
+    listState: LazyListState,
+    repo: EwtRepository,
+    navigateTo: (Screen) -> Unit,
+    onBack: () -> Unit,
+    onPaperOpened: (String, Int) -> Unit,
+) {
+    when (screen) {
+        Screen.Boot -> BootScreen()
+        Screen.Login -> LoginScreen(
+            onLoggedIn = { navigateTo(Screen.Home) },
+        )
+        Screen.Home -> HomeScreen(
+            userInfo = userInfo,
+            paperCounts = paperCounts,
+            listState = listState,
+            onOpenPaper = { paper -> navigateTo(Screen.Questions(paper)) },
+            onOpenLinkQuery = { navigateTo(Screen.LinkQuery) },
+            onOpenDebug = { navigateTo(Screen.Debug) },
+            onLogout = {
+                repo.clearToken()
+                navigateTo(Screen.Login)
+            },
+        )
+        Screen.LinkQuery -> LinkQueryScreen(
+            onBack = onBack,
+            onOpenPaper = { paper -> navigateTo(Screen.Questions(paper)) },
+        )
+        Screen.Debug -> DebugScreen(
+            onBack = onBack,
+        )
+        is Screen.Questions -> QuestionsScreen(
+            paper = screen.paper,
+            onBack = onBack,
+            onPaperOpened = onPaperOpened,
+        )
     }
 }
 
