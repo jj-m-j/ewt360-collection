@@ -1,7 +1,11 @@
 package com.ewt.answer.data
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /**
  * 仓库层：组合 EWT-TOOL-main（扫描试卷/题目）与 ewt-getanwser.js（获取答案）能力。
@@ -253,8 +257,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 session.paperId, session.reportId, session.platform, question.questionId, session.bizCode,
             ).optObj("data") ?: return null
 
-            val rightAnswer = data.optArr("rightAnswer")?.mapNotNull { it.str() } ?: emptyList()
-            val answerStr = HtmlCleaner.formatRightAnswer(rightAnswer)
+            val answerStr = extractAnswerText(data)
             val knowledges = data.optArr("knowledges")
                 ?.mapNotNull { (it as? JsonObject)?.str("title") }
                 ?.filter { it.isNotBlank() }
@@ -275,5 +278,68 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         } catch (e: Exception) {
             null
         }
+    }
+
+    /**
+     * 兼容多种答案字段结构提取答案文本：
+     * 1) rightAnswer 数组（元素为字符串 / {content|answer} 对象）
+     * 2) rightAnswer 字符串（"A,C" / "AB" / JSON 数组字符串 / 纯文本，如语法填空）
+     * 3) 其他候选字段 answer / standardAnswer / correctAnswer / answerContent / rightAnswers / answerList
+     */
+    private fun extractAnswerText(data: JsonObject): String {
+        // 1. rightAnswer 数组
+        data.optArr("rightAnswer")?.let { arr ->
+            val items = arr.mapNotNull { el ->
+                when (el) {
+                    is JsonPrimitive -> el.contentOrNull
+                    is JsonObject -> el.str("content") ?: el.str("answer") ?: el.str("value") ?: el.str("rightAnswer")
+                    else -> null
+                }
+            }
+            HtmlCleaner.formatRightAnswer(items).takeIf { it.isNotBlank() }?.let { return it }
+        }
+        // 2. rightAnswer 字符串
+        data.str("rightAnswer")?.let { raw ->
+            parseAnswerString(raw)?.let { return it }
+        }
+        // 3. 候选字段兜底
+        for (key in listOf("answer", "standardAnswer", "correctAnswer", "answerContent", "rightAnswers", "answerList")) {
+            when (val v = data[key]) {
+                is JsonArray -> {
+                    val items = v.mapNotNull { el ->
+                        when (el) {
+                            is JsonPrimitive -> el.contentOrNull
+                            is JsonObject -> el.str("content") ?: el.str("answer") ?: el.str("value")
+                            else -> null
+                        }
+                    }
+                    HtmlCleaner.formatRightAnswer(items).takeIf { it.isNotBlank() }?.let { return it }
+                }
+                is JsonPrimitive -> v.contentOrNull?.let { parseAnswerString(it) }?.let { return it }
+                is JsonObject -> (v.str("content") ?: v.str("answer"))
+                    ?.let { HtmlCleaner.clean(it) }
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { return it }
+                else -> {}
+            }
+        }
+        return ""
+    }
+
+    /** 解析字符串形式的答案：JSON 数组字符串 / "A,C" / "AC" / 纯文本 */
+    private fun parseAnswerString(raw: String): String? {
+        val t = raw.trim()
+        if (t.isEmpty()) return null
+        if (t.startsWith("[") && t.endsWith("]")) {
+            runCatching {
+                val arr = Json.parseToJsonElement(t) as? JsonArray ?: return@runCatching null
+                HtmlCleaner.formatRightAnswer(arr.mapNotNull { it.str() })
+            }.getOrNull()?.takeIf { it.isNotBlank() }?.let { return it }
+        }
+        val letters = t.split(',', '，', '、', ';', ' ').map { it.trim() }.filter { it.isNotEmpty() }
+        if (letters.isNotEmpty() && letters.all { Regex("^[A-Za-z]+$").matches(it) }) {
+            return letters.joinToString(", ")
+        }
+        return HtmlCleaner.clean(t).takeIf { it.isNotBlank() }
     }
 }
