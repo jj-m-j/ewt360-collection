@@ -11,7 +11,7 @@ import kotlinx.serialization.json.put
 
 /**
  * 仓库层：组合 EWT-TOOL-main（扫描/刷卷）、ewt-getanwser.js（答案）、opt.js（课后习题扫描 + 混合题型）能力。
- * 支持作业试卷（205）与课后习题（204，经 opt.js 的 queryStudentLessonStudyGuideAndPractice 发现）。
+ * 支持作业试卷（205）与课后习题（204）。
  */
 class EwtRepository(private val tokenStore: SecureTokenStore) {
 
@@ -80,19 +80,22 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         return all
     }
 
+    /** 日期槽：按天或按学科拉任务，附带日期时间戳用于排序 */
+    private data class DaySlot(val dayId: String?, val subjectId: Int?, val date: Long)
+
     /**
-     * 扫描单个作业下所有可答题任务（试卷 205 + 课后习题 204）。
+     * 扫描单个作业下所有可答题任务（试卷 205 + 课后习题 204），按日期正序。
      * 逻辑移植自 opt.js：
      *   getStudentHomeworkDaySubjectStat（日期统计，失败回退按 12 学科）
-     *   → student/homework/task/pageHomeworkTasks（任务列表，试卷 = contentType==2 / 含"试卷" / code==205）
-     *   → 非试卷任务收集 lessonId+taskId → queryStudentLessonStudyGuideAndPractice（课后习题 paperId + bizCode）
+     *   → student/homework/task/pageHomeworkTasks
+     *   → 非试卷任务收集 lessonId+taskId → queryStudentLessonStudyGuideAndPractice（课后习题）
      */
     suspend fun scanHomeworkPapers(schoolId: String, homework: HomeworkItem): List<Paper> {
         val papers = mutableListOf<Paper>()
         val hid = homework.homeworkId
 
         // 1. 日期/学科统计
-        var dayList = mutableListOf<Pair<String?, Int?>>()
+        var dayList = mutableListOf<DaySlot>()
         try {
             val statData = EwtEndpoints.getStudentHomeworkDaySubjectStat(schoolId, hid).optObj("data")
             val days = statData?.optArr("dateStat") ?: statData?.optArr("dayStat")
@@ -101,23 +104,26 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 val o = el as? JsonObject ?: continue
                 val dayId = o.str("dayId")
                 if (dayId != null) {
-                    dayList.add(dayId to null)
+                    dayList.add(DaySlot(dayId, null, o.longOr("date", 0L)))
                 } else {
                     val sid = o.intOr("subjectId", 0)
-                    if (sid > 0) dayList.add(null to sid)
+                    if (sid > 0) dayList.add(DaySlot(null, sid, 0L))
                 }
             }
         } catch (e: Exception) {
             DebugLog.e("Scan", "日期统计失败，回退按学科", e)
         }
         if (dayList.isEmpty()) {
-            dayList = (1..12).map { null to it }.toMutableList()
+            dayList = (1..12).map { DaySlot(null, it, 0L) }.toMutableList()
         }
+        // 按日期正序（opt.js：dayList.sort by date）
+        dayList.sortBy { it.date }
 
         // 2. 逐天/学科拉任务 + 查课后习题
-        for ((dayId, subjectId) in dayList) {
+        for (slot in dayList) {
             try {
-                val tasks = EwtEndpoints.pageHomeworkTasksOpt(schoolId, hid, dayId, subjectId) ?: continue
+                val tasks = EwtEndpoints.pageHomeworkTasksOpt(schoolId, hid, slot.dayId, slot.subjectId) ?: continue
+                val dateStr = if (slot.date > 0) formatDate(slot.date) else ""
                 val lessonIdList = mutableListOf<String>()
                 val taskIds = mutableListOf<String>()
                 val taskMap = mutableMapOf<String, JsonObject>()
@@ -140,7 +146,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                                 title = task.str("title") ?: "未知试卷",
                                 questionCount = task.str("questionCount") ?: task.str("itemCount") ?: "?",
                                 ratio = task.doubleOr("ratio", 0.0).takeIf { it > 0 },
-                                date = "",
+                                date = dateStr,
                                 subjectName = task.str("subjectName").orEmpty(),
                                 bizCode = EwtApi.BIZ_SUBMIT,
                             ),
@@ -177,7 +183,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                                     title = task?.str("title") ?: "课程练习",
                                     questionCount = studyTest.str("questionCount") ?: "?",
                                     ratio = null,
-                                    date = "",
+                                    date = dateStr,
                                     subjectName = task?.str("subjectName").orEmpty(),
                                     bizCode = biz,
                                 ),
@@ -188,7 +194,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                     }
                 }
             } catch (e: Exception) {
-                DebugLog.e("Scan", "任务拉取失败 day=$dayId subj=$subjectId", e)
+                DebugLog.e("Scan", "任务拉取失败 day=${slot.dayId} subj=${slot.subjectId}", e)
             }
         }
         return papers
@@ -311,16 +317,21 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         val list = data.optArr("groupQuestionList")
             ?: throw EwtException("题组数据为空")
         val questions = mutableListOf<QuestionItem>()
+        var seq = 0
         for (g in list) {
             val group = g as? JsonObject ?: continue
             val groupName = group.str("groupName").orEmpty()
             for (q in group.optArr("questionList") ?: emptyList()) {
                 val qo = q as? JsonObject ?: continue
                 val qid = qo.str("questionId") ?: continue
+                seq++
+                // 复合题 questionNumber 可能为 "0" 或空：用序号补齐
+                val rawNo = qo.strOr("questionNumber", "").trim()
+                val displayNo = if (rawNo.isEmpty() || rawNo == "0") seq.toString() else rawNo
                 questions.add(
                     QuestionItem(
                         questionId = qid,
-                        questionNumber = qo.strOr("questionNumber", ""),
+                        questionNumber = displayNo,
                         questionType = qo.str("questionType").orEmpty(),
                         cateId = qo.intOr("cateId", 1),
                         subjective = qo.boolOr("subjective", false),
@@ -342,13 +353,17 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         ).optObj("data") ?: throw EwtException("题目数据为空")
         val list = data.optArr("questionInfoList") ?: throw EwtException("题目数据为空")
         val questions = mutableListOf<QuestionItem>()
+        var seq = 0
         for (el in list) {
             val qo = el as? JsonObject ?: continue
             val qid = qo.str("questionId") ?: continue
+            seq++
+            val rawNo = qo.strOr("questionNumber", "").trim()
+            val displayNo = if (rawNo.isEmpty() || rawNo == "0") seq.toString() else rawNo
             questions.add(
                 QuestionItem(
                     questionId = qid,
-                    questionNumber = qo.strOr("questionNumber", ""),
+                    questionNumber = displayNo,
                     questionType = qo.str("questionType").orEmpty(),
                     cateId = qo.intOr("cateId", 1),
                     subjective = qo.boolOr("subjective", false),
@@ -363,7 +378,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     // ── 答案获取（ewt-getanwser.js + opt.js 混合题型） ───────────
 
-    /** 获取单题答案。混合题型（复合题）父题答案为空时拼接 childQuestions 子题答案/解析。 */
+    /** 获取单题答案。混合题型（复合题）父题答案为空时，子题分段保存并生成汇总。 */
     suspend fun fetchAnswer(session: PaperSession, question: QuestionItem): QuestionAnswer? {
         return try {
             val data = EwtEndpoints.getQuestionAnalysis(
@@ -373,34 +388,40 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
             var answerStr = extractAnswerText(data)
             var analysisHtml = extractAnalysisHtml(data)
             val choiceAnswers = extractChoiceList(data).toMutableList()
+            val childItems = mutableListOf<ChildAnswer>()
 
             val childQs = data.optArr("childQuestions") ?: emptyList()
             if (childQs.isNotEmpty()) {
-                // 复合题：父题 rightAnswer=[]/analyse=""，答案在子题中
-                if (answerStr.isBlank()) {
-                    val sb = StringBuilder()
-                    childQs.forEachIndexed { idx, c ->
-                        val co = c as? JsonObject ?: return@forEachIndexed
-                        val childRight = co.optArr("rightAnswer")?.mapNotNull { it.str() } ?: emptyList()
-                        val opts = HtmlCleaner.extractChoiceAnswers(childRight)
-                        if (opts.isNotEmpty()) choiceAnswers.addAll(opts)
-                        val ans = when {
-                            opts.isNotEmpty() -> opts.joinToString(", ")
-                            childRight.isNotEmpty() -> childRight.map { HtmlCleaner.clean(it) }.joinToString("; ")
-                            else -> "(主观题)"
-                        }
-                        sb.append("(${idx + 1}) ").append(ans).append("\n")
+                // 复合题：子题分段保存；父题不收集子题字母（提交时父题按非选择题自批，与 opt.js 一致）
+                childQs.forEachIndexed { idx, c ->
+                    val co = c as? JsonObject ?: return@forEachIndexed
+                    val childRight = co.optArr("rightAnswer")?.mapNotNull { it.str() } ?: emptyList()
+                    val opts = HtmlCleaner.extractChoiceAnswers(childRight)
+                    val ans = when {
+                        opts.isNotEmpty() -> opts.joinToString(", ")
+                        childRight.isNotEmpty() -> childRight.map { HtmlCleaner.clean(it) }.joinToString("; ")
+                        else -> "(主观题)"
                     }
-                    answerStr = sb.toString().trim()
+                    childItems.add(
+                        ChildAnswer(
+                            num = "(${idx + 1})",
+                            answer = ans,
+                            analysisHtml = co.str("analyse").orEmpty(),
+                            knowledge = co.str("knowledgeTitle").orEmpty(),
+                            images = co.optArr("attachmentImages")
+                                ?.mapNotNull { it.str() }
+                                ?.filter { it.startsWith("http") }
+                                ?: emptyList(),
+                        ),
+                    )
+                }
+                // 父题汇总（简短），解析为空时用子题解析
+                if (answerStr.isBlank()) {
+                    answerStr = childItems.joinToString("\n") { "${it.num} ${it.answer}" }
                 }
                 if (analysisHtml.isBlank()) {
-                    val sb = StringBuilder()
-                    childQs.forEachIndexed { idx, c ->
-                        val co = c as? JsonObject ?: return@forEachIndexed
-                        val analyse = co.str("analyse").orEmpty()
-                        if (analyse.isNotBlank()) sb.append("\n(${idx + 1}) ").append(analyse)
-                    }
-                    analysisHtml = sb.toString().trim()
+                    analysisHtml = childItems.joinToString("\n") { "${it.num} ${it.analysisHtml}" }
+                        .takeIf { it.isNotBlank() } ?: ""
                 }
             }
 
@@ -424,6 +445,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 knowledges = knowledges,
                 attachmentImages = images,
                 choiceAnswers = choiceAnswers,
+                childItems = childItems,
                 rawJson = data.toString(),
             )
         } catch (e: Exception) {
@@ -432,7 +454,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         }
     }
 
-    // ── 提交（用户确认后调用；EWT-TOOL-main paperFiller 流程） ──
+    // ── 提交（用户确认后调用；EWT-TOOL-main paperFiller / opt.js 流程） ──
 
     /** 提交整卷答案并交卷自批（按试卷 bizCode：205 作业 / 204 课后习题）。返回结果描述。 */
     suspend fun submitPaperAnswers(
@@ -448,7 +470,8 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         for (q in questions) {
             val a = answers[q.questionId] ?: continue
             val opts = a.choiceAnswers
-            if (opts.isNotEmpty()) {
+            if (opts.isNotEmpty() && opts.all { Regex("^[A-Z]+$").matches(it) }) {
+                // 选择题：提交答案字母（仅纯字母选项）
                 sel.add(
                     buildJsonObject {
                         put("questionId", q.questionId)
@@ -459,6 +482,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                     },
                 )
             } else {
+                // 非选择题 / 复合题父题：占位答案 + revision 自批（opt.js 逻辑）
                 notSel.add(
                     buildJsonObject {
                         put("questionId", q.questionId)
@@ -473,12 +497,16 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 )
             }
         }
+        // 禁止空卷提交（opt.js：无有效答案时中止，不交卷）
+        if (sel.isEmpty() && notSel.isEmpty()) {
+            throw EwtException("未获取到任何有效答案，已禁止提交空卷")
+        }
         DebugLog.d("Submit", "biz=$biz 选择题 ${sel.size} 题，非选择题 ${notSel.size} 题 reportId=$reportId")
         if (sel.isNotEmpty()) {
-            EwtEndpoints.submitAnswer(paper.paperId, reportId, EwtApi.PLATFORM, biz, JsonArray(sel))
+            EwtEndpoints.submitAnswer(paper.paperId, reportId, EwtApi.PLATFORM, biz, JsonArray(sel), paper.homeworkId.toString())
         }
         if (notSel.isNotEmpty()) {
-            EwtEndpoints.submitAnswer(paper.paperId, reportId, EwtApi.PLATFORM, biz, JsonArray(notSel))
+            EwtEndpoints.submitAnswer(paper.paperId, reportId, EwtApi.PLATFORM, biz, JsonArray(notSel), paper.homeworkId.toString())
         }
         EwtEndpoints.submitPaper(paper.paperId, reportId, EwtApi.PLATFORM, biz)
         EwtEndpoints.submitCorrected(paper.paperId, reportId, EwtApi.PLATFORM, biz)
