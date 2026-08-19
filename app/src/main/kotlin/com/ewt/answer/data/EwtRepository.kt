@@ -8,6 +8,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
+import kotlin.random.Random
 
 /**
  * 仓库层：组合 EWT-TOOL-main（扫描/刷卷）、ewt-getanwser.js（答案）、opt.js（课后习题扫描 + 混合题型）能力。
@@ -34,6 +35,10 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
     }
 
     fun hasToken(): Boolean = !EwtApi.token.isNullOrBlank()
+
+    /** 图片 URL 统一转 https（http 明文在 Android 默认被禁） */
+    private fun normalizeImg(url: String): String =
+        url.replace(Regex("""^http://file\.ewt360\.com/"""), "https://file.ewt360.com/")
 
     // ── 用户 / 登录态 ───────────────────────────────────────────
 
@@ -85,10 +90,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     /**
      * 扫描单个作业下所有可答题任务（试卷 205 + 课后习题 204），按日期正序。
-     * 逻辑移植自 opt.js：
-     *   getStudentHomeworkDaySubjectStat（日期统计，失败回退按 12 学科）
-     *   → student/homework/task/pageHomeworkTasks
-     *   → 非试卷任务收集 lessonId+taskId → queryStudentLessonStudyGuideAndPractice（课后习题）
+     * 日期统计失败时回退按 12 学科扫描，日期用作业结束时间兜底。
      */
     suspend fun scanHomeworkPapers(schoolId: String, homework: HomeworkItem): List<Paper> {
         val papers = mutableListOf<Paper>()
@@ -113,17 +115,24 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         } catch (e: Exception) {
             DebugLog.e("Scan", "日期统计失败，回退按学科", e)
         }
+        // 兜底日期：日期统计失败时用作业结束/开始时间
+        val fallbackDate = if (dayList.isEmpty()) {
+            val ts = if (homework.endTime > 0L) homework.endTime else homework.startTime
+            formatDate(ts)
+        } else {
+            ""
+        }
         if (dayList.isEmpty()) {
             dayList = (1..12).map { DaySlot(null, it, 0L) }.toMutableList()
         }
-        // 按日期正序（opt.js：dayList.sort by date）
+        // 按日期正序
         dayList.sortBy { it.date }
 
         // 2. 逐天/学科拉任务 + 查课后习题
         for (slot in dayList) {
             try {
                 val tasks = EwtEndpoints.pageHomeworkTasksOpt(schoolId, hid, slot.dayId, slot.subjectId) ?: continue
-                val dateStr = if (slot.date > 0) formatDate(slot.date) else ""
+                val dateStr = if (slot.date > 0) formatDate(slot.date) else fallbackDate
                 val lessonIdList = mutableListOf<String>()
                 val taskIds = mutableListOf<String>()
                 val taskMap = mutableMapOf<String, JsonObject>()
@@ -137,7 +146,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                     if (isPaper) {
                         val pid = task.str("contentId")
                         if (pid.isNullOrBlank() || pid == "0") continue
-                        DebugLog.d("Scan", "收录试卷: ${task.str("title")} paperId=$pid")
                         papers.add(
                             Paper(
                                 homeworkId = hid,
@@ -174,7 +182,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                             val pid = studyTest.str("paperId") ?: continue
                             val biz = studyTest.str("bizCode") ?: EwtApi.BIZ_EXERCISE
                             val task = taskMap[o.str("lessonId")]
-                            DebugLog.d("Scan", "收录课后习题: ${task?.str("title")} paperId=$pid biz=$biz")
                             papers.add(
                                 Paper(
                                     homeworkId = hid,
@@ -207,12 +214,10 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         onProgress("正在获取作业列表…")
         val homeworks = fetchHomeworks(user.schoolId)
         if (homeworks.isEmpty()) return emptyList()
-        DebugLog.d("Scan", "作业数=${homeworks.size}")
         val groups = mutableListOf<HomeworkGroup>()
         homeworks.forEachIndexed { i, hw ->
             onProgress("扫描作业 ${i + 1}/${homeworks.size}：${hw.title}")
             val papers = scanHomeworkPapers(user.schoolId, hw)
-            DebugLog.d("Scan", "作业 ${hw.homeworkId} 收录 ${papers.size} 个任务")
             if (papers.isNotEmpty()) {
                 groups.add(HomeworkGroup(hw, papers))
             }
@@ -258,15 +263,12 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         )
         for ((label, b, call) in attempts) {
             val result = runCatching { call().optObj("data") }
-                .onFailure { e ->
-                    DebugLog.e("Init", "候选[$label] 失败 paperId=${paper.paperId}", e)
-                }
+                .onFailure { e -> DebugLog.e("Init", "候选[$label] 失败 paperId=${paper.paperId}", e) }
                 .getOrNull()
             if (result != null) {
                 val id = result.str("reportId") ?: result.str("report") ?: result.str("id")
                 if (id != null) {
                     val count = result.intOr("questionCount", 0)
-                    DebugLog.d("Init", "候选[$label] 成功 reportId=$id count=$count paperId=${paper.paperId}")
                     return Triple(id, b, count)
                 }
             }
@@ -281,20 +283,15 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
             val id = runCatching {
                 EwtEndpoints.initReport(paper.paperId, EwtApi.PLATFORM, biz, extId, isRepeat)
                     .optObj("data")?.let { it.str("reportId") ?: it.str("report") ?: it.str("id") }
-            }.onFailure { e ->
-                DebugLog.e("Submit", "提交 report 初始化失败 biz=$biz isRepeat=$isRepeat paperId=${paper.paperId}", e)
-            }.getOrNull()
-            if (id != null) {
-                DebugLog.d("Submit", "提交 report 初始化成功 reportId=$id biz=$biz")
-                return id
-            }
+            }.onFailure { e -> DebugLog.e("Submit", "提交 report 初始化失败 biz=$biz isRepeat=$isRepeat", e) }
+                .getOrNull()
+            if (id != null) return id
         }
         throw EwtException("初始化提交答卷失败：无 reportId")
     }
 
     /** 空交卷解锁：仅上报作答时长，不提交任何答案内容 */
     suspend fun unlockPaper(session: PaperSession) {
-        DebugLog.d("Unlock", "空交卷解锁 paperId=${session.paperId} reportId=${session.reportId} biz=${session.bizCode}")
         EwtEndpoints.updateReport(session.paperId, session.reportId, session.platform, session.bizCode)
     }
 
@@ -305,7 +302,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            DebugLog.d("Ques", "题组接口失败，回退非题组: ${e.message}")
             fetchFlatQuestions(session)
         }
     }
@@ -314,8 +310,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         val data = EwtEndpoints.getAnswerSheetSubGroup(
             session.paperId, session.reportId, session.platform, session.bizCode,
         ).optObj("data") ?: throw EwtException("题组数据为空")
-        val list = data.optArr("groupQuestionList")
-            ?: throw EwtException("题组数据为空")
+        val list = data.optArr("groupQuestionList") ?: throw EwtException("题组数据为空")
         val questions = mutableListOf<QuestionItem>()
         var seq = 0
         for (g in list) {
@@ -325,7 +320,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 val qo = q as? JsonObject ?: continue
                 val qid = qo.str("questionId") ?: continue
                 seq++
-                // 复合题 questionNumber 可能为 "0" 或空：用序号补齐
                 val rawNo = qo.strOr("questionNumber", "").trim()
                 val displayNo = if (rawNo.isEmpty() || rawNo == "0") seq.toString() else rawNo
                 questions.add(
@@ -341,7 +335,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 )
             }
         }
-        DebugLog.d("Ques", "题组题目 ${questions.size} 道 paperId=${session.paperId} reportId=${session.reportId} biz=${session.bizCode}")
         return questions
     }
 
@@ -372,7 +365,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 ),
             )
         }
-        DebugLog.d("Ques", "非题组题目 ${questions.size} 道 paperId=${session.paperId}")
         return questions
     }
 
@@ -392,7 +384,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
             val childQs = data.optArr("childQuestions") ?: emptyList()
             if (childQs.isNotEmpty()) {
-                // 复合题：子题分段保存；父题不收集子题字母（提交时父题按非选择题自批，与 opt.js 一致）
                 childQs.forEachIndexed { idx, c ->
                     val co = c as? JsonObject ?: return@forEachIndexed
                     val childRight = co.optArr("rightAnswer")?.mapNotNull { it.str() } ?: emptyList()
@@ -411,11 +402,11 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                             images = co.optArr("attachmentImages")
                                 ?.mapNotNull { it.str() }
                                 ?.filter { it.startsWith("http") }
+                                ?.map { normalizeImg(it) }
                                 ?: emptyList(),
                         ),
                     )
                 }
-                // 父题汇总（简短），解析为空时用子题解析
                 if (answerStr.isBlank()) {
                     answerStr = childItems.joinToString("\n") { "${it.num} ${it.answer}" }
                 }
@@ -432,11 +423,8 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
             val images = data.optArr("attachmentImages")
                 ?.mapNotNull { it.str() }
                 ?.filter { it.startsWith("http") }
+                ?.map { normalizeImg(it) }
                 ?: emptyList()
-
-            if (answerStr.isBlank() && analysisHtml.isBlank()) {
-                DebugLog.e("Ans", "答案/解析为空 q=${question.questionId} raw=${data.toString().take(600)}")
-            }
 
             QuestionAnswer(
                 question = question,
@@ -456,11 +444,15 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     // ── 提交（用户确认后调用；EWT-TOOL-main paperFiller / opt.js 流程） ──
 
-    /** 提交整卷答案并交卷自批（按试卷 bizCode：205 作业 / 204 课后习题）。返回结果描述。 */
+    /**
+     * 提交整卷答案并交卷自批。
+     * @param accuracy 主观题满分率 0-100：客观题系统批改；主观题按比例分配 满分(100%) / 半对(50%) / 错(0%)
+     */
     suspend fun submitPaperAnswers(
         paper: Paper,
         questions: List<QuestionItem>,
         answers: Map<String, QuestionAnswer>,
+        accuracy: Int = 100,
     ): String {
         val biz = paper.bizCode
         val reportId = initSubmitReportId(paper, biz)
@@ -471,7 +463,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
             val a = answers[q.questionId] ?: continue
             val opts = a.choiceAnswers
             if (opts.isNotEmpty() && opts.all { Regex("^[A-Z]+$").matches(it) }) {
-                // 选择题：提交答案字母（仅纯字母选项）
                 sel.add(
                     buildJsonObject {
                         put("questionId", q.questionId)
@@ -482,7 +473,14 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                     },
                 )
             } else {
-                // 非选择题 / 复合题父题：占位答案 + revision 自批（opt.js 逻辑）
+                // 非选择题 / 复合题父题：按准确率分配得分（满分/半对/错）
+                val acc = accuracy.coerceIn(0, 100)
+                val r = Random.nextFloat() * 100f
+                val score = when {
+                    r < acc -> q.score
+                    r < acc + (100f - acc) / 2f -> q.score * 0.5
+                    else -> 0.0
+                }
                 notSel.add(
                     buildJsonObject {
                         put("questionId", q.questionId)
@@ -491,17 +489,15 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                         put("cateId", q.cateId)
                         put("answers", JsonArray(listOf(JsonPrimitive(1))))
                         put("attachmentImages", JsonArray(emptyList()))
-                        put("score", q.score)
+                        put("score", score)
                         put("revision", true)
                     },
                 )
             }
         }
-        // 禁止空卷提交（opt.js：无有效答案时中止，不交卷）
         if (sel.isEmpty() && notSel.isEmpty()) {
             throw EwtException("未获取到任何有效答案，已禁止提交空卷")
         }
-        DebugLog.d("Submit", "biz=$biz 选择题 ${sel.size} 题，非选择题 ${notSel.size} 题 reportId=$reportId")
         if (sel.isNotEmpty()) {
             EwtEndpoints.submitAnswer(paper.paperId, reportId, EwtApi.PLATFORM, biz, JsonArray(sel), paper.homeworkId.toString())
         }
@@ -510,7 +506,27 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         }
         EwtEndpoints.submitPaper(paper.paperId, reportId, EwtApi.PLATFORM, biz)
         EwtEndpoints.submitCorrected(paper.paperId, reportId, EwtApi.PLATFORM, biz)
-        return "已提交：选择题 ${sel.size} 题，非选择题 ${notSel.size} 题，并完成交卷自批"
+        return "已提交：选择题 ${sel.size} 题，非选择题 ${notSel.size} 题（主观准确率 $accuracy%），并完成交卷自批"
+    }
+
+    /** 一键刷单卷：打开 → 题目 → 解锁 → 逐题答案 → 提交（带进度回调） */
+    suspend fun brushPaper(
+        paper: Paper,
+        accuracy: Int = 100,
+        onProgress: (String) -> Unit = {},
+    ): String {
+        onProgress("初始化：${paper.title}")
+        val session = openPaper(paper)
+        onProgress("获取题目…")
+        val questions = fetchQuestions(session)
+        unlockPaper(session)
+        val answers = mutableMapOf<String, QuestionAnswer>()
+        questions.forEachIndexed { i, q ->
+            onProgress("获取答案 ${i + 1}/${questions.size}")
+            fetchAnswer(session, q)?.let { answers[q.questionId] = it }
+        }
+        onProgress("提交并交卷…")
+        return submitPaperAnswers(paper, questions, answers, accuracy)
     }
 
     // ── 字段提取辅助 ────────────────────────────────────────────
