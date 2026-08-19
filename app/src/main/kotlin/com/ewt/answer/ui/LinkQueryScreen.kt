@@ -100,7 +100,7 @@ fun LinkQueryScreen(
                 modifier = Modifier.fillMaxWidth(),
                 // MIUI 蓝
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = MiuixTheme.colorScheme.primary,
+                    color = MiuixTheme.colorScheme.primary,
                     contentColor = MiuixTheme.colorScheme.onPrimary,
                 ),
             ) {
