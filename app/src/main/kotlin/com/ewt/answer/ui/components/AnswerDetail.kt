@@ -1,5 +1,7 @@
 package com.ewt.answer.ui.components
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -7,7 +9,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -16,7 +20,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ewt.answer.data.QuestionAnswer
 import com.ewt.answer.data.QuestionItem
-import top.yukonga.miuix.kmp.basic.Badge
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -65,7 +68,7 @@ fun AnswerDetailCard(
                 )
             } else {
                 Text(
-                    text = "（主观题，请在解析中查看参考答案）",
+                    text = "该题未返回标准答案，请参考下方解析",
                     fontSize = 13.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
@@ -120,39 +123,40 @@ fun questionTypeTag(q: QuestionItem): String {
     return parts.joinToString(" · ")
 }
 
-/** 状态徽标 */
+/** 状态指示：小圆点 + 文字（已获取 / 失败 / 未获取） */
 @Composable
 fun QuestionStatusBadge(
     hasAnswer: Boolean,
     failed: Boolean,
 ) {
-    val (container, content, text) = when {
+    val (dotColor, text, textColor) = when {
         failed -> Triple(
-            MiuixTheme.colorScheme.errorContainer,
             MiuixTheme.colorScheme.error,
             "失败",
+            MiuixTheme.colorScheme.error,
         )
         hasAnswer -> Triple(
-            MiuixTheme.colorScheme.primaryContainer,
             MiuixTheme.colorScheme.primary,
             "已获取",
+            MiuixTheme.colorScheme.primary,
         )
         else -> Triple(
-            MiuixTheme.colorScheme.secondaryContainer,
-            MiuixTheme.colorScheme.onSecondaryContainer,
+            MiuixTheme.colorScheme.onSurfaceVariantActions,
             "未获取",
+            MiuixTheme.colorScheme.onSurfaceVariantSummary,
         )
     }
-    Badge(
-        containerColor = container,
-        contentColor = content,
-    ) {
-        Spacer(Modifier.width(4.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(6.dp)
+                .background(dotColor, CircleShape),
+        )
+        Spacer(Modifier.width(5.dp))
         Text(
             text = text,
-            fontSize = 10.sp,
-            color = content,
+            fontSize = 11.sp,
+            color = textColor,
         )
-        Spacer(Modifier.width(4.dp))
     }
 }
