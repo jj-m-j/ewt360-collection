@@ -274,6 +274,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 analysisHtml = analysisHtml,
                 knowledges = knowledges,
                 attachmentImages = images,
+                rawJson = data.toString(),
             )
         } catch (e: Exception) {
             null
