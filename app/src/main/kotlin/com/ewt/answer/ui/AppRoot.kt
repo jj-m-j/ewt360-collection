@@ -12,9 +12,15 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -30,14 +37,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.ewt.answer.data.AppContainer
 import com.ewt.answer.data.EwtRepository
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.UserInfo
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
+import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.TextStyles
 import top.yukonga.miuix.kmp.theme.darkColorScheme
@@ -48,11 +58,16 @@ import top.yukonga.miuix.kmp.theme.lightColorScheme
 sealed class Screen {
     data object Boot : Screen()
     data object Login : Screen()
-    data object Home : Screen()
+    /** 主层（底部 Tab：0=试卷 1=关于） */
+    data object Main : Screen()
     data object LinkQuery : Screen()
     data object Debug : Screen()
     data class Questions(val paper: Paper) : Screen()
 }
+
+/** 底部 Tab 索引 */
+private const val TAB_PAPERS = 0
+private const val TAB_ABOUT = 1
 
 @Composable
 fun AppRoot() {
@@ -74,6 +89,8 @@ fun AppRoot() {
         var screen by remember { mutableStateOf<Screen>(Screen.Boot) }
         var previous by remember { mutableStateOf<Screen?>(null) }
         var userInfo by remember { mutableStateOf<UserInfo?>(null) }
+        // 主层底部 Tab（试卷 / 关于）
+        var tab by remember { mutableIntStateOf(TAB_PAPERS) }
         // paperId → 真实题数（打开试卷后回传，主页展示）
         var paperCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
         // 主页列表滚动位置（跨页面保留，返回不跳顶）
@@ -143,7 +160,7 @@ fun AppRoot() {
         }
         // 仅二级页面启用返回手势（一级页面由系统处理退出）
         backCallback.isEnabled =
-            screen !is Screen.Home && screen !is Screen.Login && screen !is Screen.Boot
+            screen !is Screen.Main && screen !is Screen.Login && screen !is Screen.Boot
 
         // 手势完成切屏后：进度归零、恢复正常转场
         LaunchedEffect(gestureCommitted) {
@@ -158,7 +175,7 @@ fun AppRoot() {
             screen = if (repo.hasToken()) {
                 try {
                     userInfo = repo.fetchUserInfo()
-                    Screen.Home
+                    Screen.Main
                 } catch (e: Exception) {
                     repo.clearToken()
                     Screen.Login
@@ -176,8 +193,8 @@ fun AppRoot() {
                         .fillMaxSize()
                         .graphicsLayer {
                             val p = backProgress.value
-                            // 被覆盖页：向左 1/4 视差 + 透明度恢复（MIUIX MiuixDefault covered）
-                            translationX = -0.25f * size.width * p
+                            // 被覆盖页：从左侧 1/4 视差位置向右回正 + 透明度恢复（MIUIX covered 层）
+                            translationX = -0.25f * size.width * (1f - p)
                             alpha = 0.9f + 0.1f * p
                         },
                 ) {
@@ -186,6 +203,8 @@ fun AppRoot() {
                         userInfo = userInfo,
                         paperCounts = paperCounts,
                         listState = homeListState,
+                        tab = tab,
+                        onTabSelect = { tab = it },
                         repo = repo,
                         navigateTo = { navigateTo(it) },
                         onBack = { goBack() },
@@ -221,7 +240,7 @@ fun AppRoot() {
                                 (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
                                     .togetherWith(fadeOut(tween(200)))
                             }
-                            // 返回一级页面：从左侧滑回
+                            // 返回主层：从左侧滑回
                             else -> {
                                 (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { -it / 3 })
                                     .togetherWith(fadeOut(tween(200)))
@@ -235,6 +254,8 @@ fun AppRoot() {
                         userInfo = userInfo,
                         paperCounts = paperCounts,
                         listState = homeListState,
+                        tab = tab,
+                        onTabSelect = { tab = it },
                         repo = repo,
                         navigateTo = { navigateTo(it) },
                         onBack = { goBack() },
@@ -253,6 +274,8 @@ private fun RenderScreen(
     userInfo: UserInfo?,
     paperCounts: Map<String, Int>,
     listState: LazyListState,
+    tab: Int,
+    onTabSelect: (Int) -> Unit,
     repo: EwtRepository,
     navigateTo: (Screen) -> Unit,
     onBack: () -> Unit,
@@ -261,12 +284,14 @@ private fun RenderScreen(
     when (screen) {
         Screen.Boot -> BootScreen()
         Screen.Login -> LoginScreen(
-            onLoggedIn = { navigateTo(Screen.Home) },
+            onLoggedIn = { navigateTo(Screen.Main) },
         )
-        Screen.Home -> HomeScreen(
+        Screen.Main -> MainLayer(
             userInfo = userInfo,
             paperCounts = paperCounts,
             listState = listState,
+            tab = tab,
+            onTabSelect = onTabSelect,
             onOpenPaper = { paper -> navigateTo(Screen.Questions(paper)) },
             onOpenLinkQuery = { navigateTo(Screen.LinkQuery) },
             onOpenDebug = { navigateTo(Screen.Debug) },
@@ -286,6 +311,82 @@ private fun RenderScreen(
             paper = screen.paper,
             onBack = onBack,
             onPaperOpened = onPaperOpened,
+        )
+    }
+}
+
+/** 主层：底部 Tab（试卷 / 关于） */
+@Composable
+private fun MainLayer(
+    userInfo: UserInfo?,
+    paperCounts: Map<String, Int>,
+    listState: LazyListState,
+    tab: Int,
+    onTabSelect: (Int) -> Unit,
+    onOpenPaper: (Paper) -> Unit,
+    onOpenLinkQuery: () -> Unit,
+    onOpenDebug: () -> Unit,
+    onLogout: () -> Unit,
+) {
+    Column(Modifier.fillMaxSize()) {
+        Box(Modifier.weight(1f)) {
+            AnimatedContent(
+                targetState = tab,
+                transitionSpec = {
+                    fadeIn(tween(180)).togetherWith(fadeOut(tween(120)))
+                },
+                label = "tab",
+            ) { t ->
+                when (t) {
+                    TAB_PAPERS -> HomeScreen(
+                        userInfo = userInfo,
+                        paperCounts = paperCounts,
+                        listState = listState,
+                        onOpenPaper = onOpenPaper,
+                        onOpenLinkQuery = onOpenLinkQuery,
+                    )
+                    else -> AboutScreen(
+                        onOpenDebug = onOpenDebug,
+                        onLogout = onLogout,
+                    )
+                }
+            }
+        }
+        BottomTabBar(tab = tab, onTabSelect = onTabSelect)
+    }
+}
+
+/** 底部 Tab 栏（文字样式，半透明毛玻璃感） */
+@Composable
+private fun BottomTabBar(tab: Int, onTabSelect: (Int) -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .background(MiuixTheme.colorScheme.surface.copy(alpha = 0.92f))
+            .height(54.dp),
+    ) {
+        Row(Modifier.fillMaxSize()) {
+            TabItem(text = "试卷", selected = tab == TAB_PAPERS) { onTabSelect(TAB_PAPERS) }
+            TabItem(text = "关于", selected = tab == TAB_ABOUT) { onTabSelect(TAB_ABOUT) }
+        }
+    }
+}
+
+@Composable
+private fun TabItem(text: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .weight(1f)
+            .fillMaxSize()
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            fontSize = 15.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
         )
     }
 }
