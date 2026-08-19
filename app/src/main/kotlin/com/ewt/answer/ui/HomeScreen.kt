@@ -1,5 +1,6 @@
 package com.ewt.answer.ui
 
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,12 +10,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.input.rememberTextFieldState
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -24,16 +26,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ewt.answer.data.DebugLog
 import com.ewt.answer.data.HomeworkGroup
 import com.ewt.answer.data.Paper
-import com.ewt.answer.data.PaperLinkParser
 import com.ewt.answer.data.UserInfo
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
@@ -45,7 +47,6 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
@@ -56,13 +57,13 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun HomeScreen(
     userInfo: UserInfo?,
     onOpenPaper: (Paper) -> Unit,
+    onOpenLinkQuery: () -> Unit,
 ) {
     val vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
     val uiState by vm.uiState.collectAsState()
     val refreshing by vm.refreshing.collectAsState()
     val statusText by vm.statusText.collectAsState()
 
-    var showLinkDialog by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { vm.load() }
@@ -100,7 +101,7 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 item(key = "link") {
-                    LinkQueryEntry(onClick = { showLinkDialog = true })
+                    LinkQueryEntry(onClick = onOpenLinkQuery)
                 }
 
                 when (val state = uiState) {
@@ -129,7 +130,7 @@ fun HomeScreen(
                     }
                     HomeViewModel.UiState.Empty -> {
                         item(key = "empty") {
-                            EmptyHint("暂未找到独立试卷\n请确认作业已布置试卷类任务")
+                            EmptyHint("暂未找到可查询的任务\n请确认作业已布置试卷或课后习题")
                         }
                     }
                     is HomeViewModel.UiState.Error -> {
@@ -163,13 +164,6 @@ fun HomeScreen(
                 }
             }
         }
-    }
-
-    if (showLinkDialog) {
-        LinkQueryDialog(
-            onDismiss = { showLinkDialog = false },
-            onPaper = onOpenPaper,
-        )
     }
 
     if (showAboutDialog) {
@@ -234,7 +228,7 @@ private fun PaperRow(paper: Paper, onClick: () -> Unit) {
     }
 }
 
-/** 粘贴链接查询入口卡片：点击后弹出输入框对话框 */
+/** 粘贴链接查询入口卡片：点击进入链接查询页 */
 @Composable
 private fun LinkQueryEntry(onClick: () -> Unit) {
     Card(
@@ -271,65 +265,12 @@ private fun LinkQueryEntry(onClick: () -> Unit) {
     }
 }
 
-@Composable
-private fun LinkQueryDialog(
-    onDismiss: () -> Unit,
-    onPaper: (Paper) -> Unit,
-) {
-    val state = rememberTextFieldState()
-    var error by remember { mutableStateOf<String?>(null) }
-
-    OverlayDialog(
-        show = true,
-        title = "粘贴链接查询",
-        summary = "支持 web.ewt360.com/answer-pc/exam/answer?paperId=… 等试题链接",
-        onDismissRequest = onDismiss,
-    ) {
-        Column {
-            TextField(
-                state = state,
-                label = "粘贴试题链接",
-                useLabelAsPlaceholder = true,
-                modifier = Modifier.fillMaxWidth(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            )
-            if (error != null) {
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = error.orEmpty(),
-                    fontSize = 12.sp,
-                    color = MiuixTheme.colorScheme.error,
-                )
-            }
-            Spacer(Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(text = "取消", onClick = onDismiss)
-                Spacer(Modifier.size(8.dp))
-                TextButton(
-                    text = "查询",
-                    onClick = {
-                        val raw = state.text.toString()
-                        val parsed = PaperLinkParser.parse(raw)
-                        if (parsed == null) {
-                            error = "链接无效：未找到 paperId 参数"
-                        } else {
-                            error = null
-                            onDismiss()
-                            onPaper(PaperLinkParser.toPaper(parsed))
-                        }
-                    },
-                )
-            }
-        }
-    }
-}
-
+/** 关于 / 调试面板：版本信息 + 日志查看/分享/清空 */
 @Composable
 private fun AboutDialog(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    var showLog by remember { mutableStateOf(false) }
+
     OverlayDialog(
         show = true,
         title = "关于",
@@ -338,11 +279,38 @@ private fun AboutDialog(onDismiss: () -> Unit) {
     ) {
         Column {
             Text(
-                text = "关于页面暂未开发",
-                fontSize = 14.sp,
-                color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                text = "调试模式已开启，日志保存在本地 filesDir/logs/app.log",
+                fontSize = 12.sp,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
+            if (showLog) {
+                val log = DebugLog.readLog()
+                Text(
+                    text = log.takeLast(3000).ifBlank { "(暂无日志)" },
+                    fontSize = 10.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 220.dp)
+                        .verticalScroll(rememberScrollState()),
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    text = if (showLog) "收起日志" else "查看日志",
+                    onClick = { showLog = !showLog },
+                )
+                Spacer(Modifier.size(4.dp))
+                TextButton(text = "分享日志", onClick = { shareLog(context) })
+                Spacer(Modifier.size(4.dp))
+                TextButton(text = "清空日志", onClick = { DebugLog.clear() })
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
@@ -351,6 +319,17 @@ private fun AboutDialog(onDismiss: () -> Unit) {
                 TextButton(text = "知道了", onClick = onDismiss)
             }
         }
+    }
+}
+
+private fun shareLog(context: android.content.Context) {
+    runCatching {
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "EWT360 调试日志")
+            putExtra(Intent.EXTRA_TEXT, DebugLog.readLog().takeLast(20000))
+        }
+        context.startActivity(Intent.createChooser(intent, "分享日志"))
     }
 }
 
