@@ -63,6 +63,8 @@ data class QuestionAnswer(
     val knowledges: List<String>,
     /** 附件图片 URL */
     val attachmentImages: List<String>,
+    /** 接口原始返回（调试用，定位字段结构） */
+    val rawJson: String = "",
 )
 
 /** 从粘贴的 EWT 试题链接解析出的参数 */
