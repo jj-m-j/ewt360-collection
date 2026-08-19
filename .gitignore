@@ -1,0 +1,23 @@
+# Gradle
+.gradle/
+build/
+# gradle-wrapper.jar 由 CI 自动恢复（见 .github/workflows/build.yml）
+# 本地可用 `gradle wrapper --gradle-version 9.6.1` 生成
+gradle/wrapper/gradle-wrapper.jar
+
+# Android
+local.properties
+*.iml
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# 本地密钥 / 隐私文件（绝不提交）
+*.jks
+*.keystore
+keystore.properties
+
+# Logs
+*.log
