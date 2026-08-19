@@ -17,8 +17,9 @@ import java.util.concurrent.TimeUnit
  * 字体文件不打包进 APK，而是托管在 GitHub 仓库 fonts/ 目录：
  *   https://raw.githubusercontent.com/jj-m-j/ewttest/main/fonts/MiSansVF.ttf
  *
- * - 首次启动下载 MiSansVF 可变字体（约 20MB，一个文件覆盖全部字重）到缓存目录
+ * - 由用户确认后下载 MiSansVF 可变字体（约 20MB）到缓存目录
  * - 之后启动直接使用本地缓存，离线可用
+ * - 开关关闭时恢复系统字体并删除缓存
  * - 下载/加载失败时返回 null，调用方回退系统字体
  */
 object MiuixFonts {
@@ -47,6 +48,19 @@ object MiuixFonts {
         FontWeight.Black,
     )
 
+    /** 字体是否已下载到缓存 */
+    fun isDownloaded(context: Context): Boolean {
+        val file = File(File(context.filesDir, "fonts"), CACHE_VF_NAME)
+        return file.exists() && file.length() > 0L
+    }
+
+    /** 已下载字体大小（MB 字符串），未下载返回空 */
+    fun downloadedMb(context: Context): String {
+        val file = File(File(context.filesDir, "fonts"), CACHE_VF_NAME)
+        if (!file.exists()) return ""
+        return String.format("%.1f MB", file.length() / 1024.0 / 1024.0)
+    }
+
     /**
      * 加载 MiSans 字体族（自动下载 + 缓存）。
      * 返回 null 表示加载失败，调用方应回退系统默认字体。
@@ -65,7 +79,7 @@ object MiuixFonts {
         }
     }
 
-    /** 删除缓存（如需要重新下载） */
+    /** 删除缓存（开关关闭时调用，恢复系统字体） */
     fun clearCache(context: Context) {
         File(context.filesDir, "fonts").deleteRecursively()
     }
