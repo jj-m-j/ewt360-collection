@@ -30,7 +30,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.ewt.answer.data.HomeworkGroup
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.UserInfo
 import kotlinx.coroutines.flow.collect
@@ -58,8 +57,6 @@ fun HomeScreen(
     listState: LazyListState,
     onOpenPaper: (Paper) -> Unit,
     onOpenLinkQuery: () -> Unit,
-    onOpenDebug: () -> Unit,
-    onLogout: () -> Unit,
 ) {
     val vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
     val uiState by vm.uiState.collectAsState()
@@ -93,10 +90,7 @@ fun HomeScreen(
                 title = "试卷列表",
                 subtitle = userInfo?.realName?.let { "你好，$it" } ?: "",
                 navigationIcon = {
-                    TextButton(text = "退出登录", onClick = onLogout)
-                },
-                actions = {
-                    TextButton(text = "调试模式", onClick = onOpenDebug)
+                    TextButton(text = "刷新", onClick = { vm.load(force = true) })
                 },
                 scrollBehavior = scrollBehavior,
             )
@@ -303,17 +297,6 @@ private fun FilterChip(text: String, selected: Boolean, onClick: () -> Unit) {
             color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
         )
     }
-}
-
-@Composable
-private fun HomeworkHeader(group: HomeworkGroup) {
-    SmallTitle(
-        text = if (group.homework.title.isBlank()) {
-            "作业 #${group.homework.homeworkId}"
-        } else {
-            group.homework.title
-        },
-    )
 }
 
 @Composable
