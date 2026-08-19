@@ -37,8 +37,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.RenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -76,7 +76,7 @@ sealed class Screen {
 private const val TAB_PAPERS = 0
 private const val TAB_ABOUT = 1
 
-/** Android 12+ 是否支持硬件加速 RenderEffect 模糊 */
+/** Android 12+ 支持硬件加速 RenderEffect 模糊（Modifier.blur 低版本自动降级） */
 private val blurSupported: Boolean =
     android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
 
@@ -258,10 +258,18 @@ fun AppRoot() {
                     )
                 }
             }
-            // 顶层：当前页（手势跟随 + 动态模糊 + 缩放 + 圆角）
+            // 顶层：当前页（动态模糊 + 位移 + 缩放 + 圆角，全部由手势 progress 驱动）
             Box(
                 Modifier
                     .fillMaxSize()
+                    .then(
+                        if (blurSupported && backProgress.value > 0f) {
+                            // blurRadius = progress × 10dp，取消时随 progress 归零自动恢复
+                            Modifier.blur(backProgress.value * 10.dp)
+                        } else {
+                            Modifier
+                        },
+                    )
                     .graphicsLayer {
                         val p = backProgress.value
                         translationX = size.width * p
@@ -270,13 +278,6 @@ fun AppRoot() {
                         if (p > 0f) {
                             shape = RoundedCornerShape(28.dp.toPx() * p)
                             clip = true
-                            // 动态模糊：blurRadius = progress × maxBlur（Android 12+ RenderEffect 硬件加速）
-                            // 返回取消时随 progress 归零自动恢复清晰
-                            if (blurSupported) {
-                                renderEffect = RenderEffect.createBlurEffect(
-                                    p * 10f, p * 10f, android.graphics.Shader.TileMode.CLAMP,
-                                )
-                            }
                         }
                     },
             ) {
@@ -478,7 +479,7 @@ private fun MainLayer(
                 )
             }
         }
-        // 悬浮胶囊底栏（半透明 Surface 层级，模糊成本高故用高不透明 Surface）
+        // 悬浮胶囊底栏（高不透明 Surface，避免大面积常驻模糊的 GPU 开销）
         Box(
             Modifier
                 .align(Alignment.BottomCenter)
