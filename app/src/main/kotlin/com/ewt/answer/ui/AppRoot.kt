@@ -98,6 +98,10 @@ fun AppRoot() {
                     onOpenPaper = { paper -> screen = Screen.Questions(paper) },
                     onOpenLinkQuery = { screen = Screen.LinkQuery },
                     onOpenDebug = { screen = Screen.Debug },
+                    onLogout = {
+                        repo.clearToken()
+                        screen = Screen.Login
+                    },
                 )
                 Screen.LinkQuery -> LinkQueryScreen(
                     onBack = { screen = Screen.Home },
