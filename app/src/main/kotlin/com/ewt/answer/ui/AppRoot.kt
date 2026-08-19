@@ -5,7 +5,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -93,9 +92,10 @@ fun AppRoot() {
 
         AnimatedContent(
             targetState = screen,
+            // 轻量淡入淡出（无位移），避免大列表重组时滑动手势掉帧
             transitionSpec = {
-                (fadeIn(animationSpec = tween(240)) + slideInHorizontally(animationSpec = tween(300)) { it / 4 })
-                    .togetherWith(fadeOut(animationSpec = tween(200)))
+                fadeIn(animationSpec = tween(140))
+                    .togetherWith(fadeOut(animationSpec = tween(120)))
             },
             label = "screen",
         ) { s ->
