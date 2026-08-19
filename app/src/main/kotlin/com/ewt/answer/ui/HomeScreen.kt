@@ -1,6 +1,7 @@
 package com.ewt.answer.ui
 
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -23,6 +25,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +40,7 @@ import com.ewt.answer.data.DebugLog
 import com.ewt.answer.data.HomeworkGroup
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.UserInfo
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
@@ -50,8 +54,8 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
-import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.window.WindowDialog
 
 @Composable
 fun HomeScreen(
@@ -63,6 +67,8 @@ fun HomeScreen(
     val uiState by vm.uiState.collectAsState()
     val refreshing by vm.refreshing.collectAsState()
     val statusText by vm.statusText.collectAsState()
+    val dateFilter by vm.dateFilter.collectAsState()
+    val subjectFilter by vm.subjectFilter.collectAsState()
 
     var showAboutDialog by remember { mutableStateOf(false) }
 
@@ -152,12 +158,59 @@ fun HomeScreen(
                         }
                     }
                     is HomeViewModel.UiState.Ready -> {
-                        state.groups.forEach { group ->
-                            item(key = "group_${group.homework.homeworkId}") {
-                                HomeworkHeader(group)
+                        val allPapers = remember(state.groups) { state.groups.flatMap { it.papers } }
+                        val dates = remember(allPapers) {
+                            allPapers.mapNotNull { it.date.takeIf { d -> d.isNotBlank() } }
+                                .distinct().sortedDescending()
+                        }
+                        val subjects = remember(allPapers) {
+                            allPapers.mapNotNull { it.subjectName.takeIf { s -> s.isNotBlank() } }
+                                .distinct().sorted()
+                        }
+
+                        if (dates.isNotEmpty()) {
+                            item(key = "date_filter") {
+                                FilterRow(
+                                    label = "日期",
+                                    options = dates,
+                                    selected = dateFilter,
+                                    onSelect = { vm.setDateFilter(it) },
+                                )
                             }
-                            items(group.papers, key = { it.paperId }) { paper ->
-                                PaperRow(paper = paper, onClick = { onOpenPaper(paper) })
+                        }
+                        if (subjects.isNotEmpty()) {
+                            item(key = "subject_filter") {
+                                FilterRow(
+                                    label = "学科",
+                                    options = subjects,
+                                    selected = subjectFilter,
+                                    onSelect = { vm.setSubjectFilter(it) },
+                                )
+                            }
+                        }
+
+                        val filteredGroups = remember(state.groups, dateFilter, subjectFilter) {
+                            state.groups.mapNotNull { g ->
+                                val fp = g.papers.filter { p ->
+                                    (dateFilter == null || p.date == dateFilter) &&
+                                        (subjectFilter == null || p.subjectName == subjectFilter)
+                                }
+                                if (fp.isEmpty()) null else g.copy(papers = fp)
+                            }
+                        }
+
+                        if (filteredGroups.isEmpty()) {
+                            item(key = "filtered_empty") {
+                                EmptyHint("当前筛选条件下没有任务")
+                            }
+                        } else {
+                            filteredGroups.forEach { group ->
+                                item(key = "group_${group.homework.homeworkId}") {
+                                    HomeworkHeader(group)
+                                }
+                                items(group.papers, key = { it.paperId }) { paper ->
+                                    PaperRow(paper = paper, onClick = { onOpenPaper(paper) })
+                                }
                             }
                         }
                     }
@@ -168,6 +221,51 @@ fun HomeScreen(
 
     if (showAboutDialog) {
         AboutDialog(onDismiss = { showAboutDialog = false })
+    }
+}
+
+/** 筛选行：标签 + 选项 chips（横向滚动） */
+@Composable
+private fun FilterRow(
+    label: String,
+    options: List<String>,
+    selected: String?,
+    onSelect: (String?) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            modifier = Modifier.padding(end = 8.dp),
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            item { FilterChip(text = "全部", selected = selected == null) { onSelect(null) } }
+            items(options) { opt ->
+                FilterChip(text = opt, selected = selected == opt) { onSelect(opt) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterChip(text: String, selected: Boolean, onClick: () -> Unit) {
+    Card(
+        cornerRadius = 16.dp,
+        insideMargin = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        onClick = onClick,
+    ) {
+        Text(
+            text = text,
+            fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+            color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        )
     }
 }
 
@@ -265,13 +363,15 @@ private fun LinkQueryEntry(onClick: () -> Unit) {
     }
 }
 
-/** 关于 / 调试面板：版本信息 + 日志查看/分享/清空 */
+/** 关于 / 调试面板：版本 + 日志 + 字体下载（WindowDialog 不依赖 Scaffold，保证可显示） */
 @Composable
 private fun AboutDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var showLog by remember { mutableStateOf(false) }
+    var fontLoading by remember { mutableStateOf(false) }
 
-    OverlayDialog(
+    WindowDialog(
         show = true,
         title = "关于",
         summary = "EWT360 答案查询 v1.0.0",
@@ -307,15 +407,32 @@ private fun AboutDialog(onDismiss: () -> Unit) {
                     onClick = { showLog = !showLog },
                 )
                 Spacer(Modifier.size(4.dp))
-                TextButton(text = "分享日志", onClick = { shareLog(context) })
-                Spacer(Modifier.size(4.dp))
-                TextButton(text = "清空日志", onClick = { DebugLog.clear() })
+                TextButton(
+                    text = if (fontLoading) "下载中…" else "下载字体",
+                    enabled = !fontLoading,
+                    onClick = {
+                        fontLoading = true
+                        scope.launch {
+                            val ok = MiuixFonts.loadMiSans(context) != null
+                            Toast.makeText(
+                                context,
+                                if (ok) "字体下载成功" else "字体下载失败",
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                            fontLoading = false
+                        }
+                    },
+                )
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                TextButton(text = "分享日志", onClick = { shareLog(context) })
+                Spacer(Modifier.size(4.dp))
+                TextButton(text = "清空日志", onClick = { DebugLog.clear() })
+                Spacer(Modifier.size(4.dp))
                 TextButton(text = "知道了", onClick = onDismiss)
             }
         }
