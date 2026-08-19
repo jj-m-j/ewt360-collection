@@ -1,8 +1,6 @@
 package com.ewt.answer.ui
 
 import android.content.Context
-import android.view.View
-import android.view.ViewOutlineProvider
 import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
@@ -133,7 +131,7 @@ fun AppRoot() {
         // 主页列表滚动位置（跨页面保留，返回不跳顶）
         val homeListState: LazyListState = rememberLazyListState()
 
-        // BlurView 目标（页面内容容器，供悬浮底栏模糊）
+        // BlurView 目标（页面内容容器，供悬浮底栏实时模糊）
         var blurTarget by remember { mutableStateOf<BlurTarget?>(null) }
 
         // ── 预测式返回：手势进度驱动（参考 MIUIX NavDisplay MiuixDefault 转场） ──
@@ -273,7 +271,7 @@ fun AppRoot() {
                         )
                     }
                 }
-                // 顶层：当前页（手势跟随：位移 + 缩放 + 圆角，模糊由底栏 BlurView 负责）
+                // 顶层：当前页（手势跟随：位移 + 缩放 + 圆角）
                 Box(
                     Modifier
                         .fillMaxSize()
@@ -439,7 +437,7 @@ private fun RenderScreen(
     }
 }
 
-/** 主层：悬浮底部 Tab（试卷 / 关于），BlurView 毛玻璃背景 */
+/** 主层：悬浮底部 Tab（试卷 / 关于） */
 @Composable
 private fun MainLayer(
     userInfo: UserInfo?,
@@ -456,12 +454,6 @@ private fun MainLayer(
     onOpenDebug: () -> Unit,
     onLogout: () -> Unit,
 ) {
-    val root = LocalContext.current
-    // 从 RootView 中查找 BlurTarget（由 AppRoot 创建的页面容器）
-    val blurTarget = remember {
-        (root as? android.app.Activity)?.findViewById<BlurTarget>(android.R.id.content)
-            ?.let { null } // 占位，实际由 AppRoot 状态传入
-    }
     Box(Modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = tab,
@@ -519,15 +511,13 @@ private fun BlurredTabBar(
     ) {
         if (blurSupported) {
             AndroidView(
-                factory = { ctx ->
-                    BlurView(ctx)
-                },
+                factory = { ctx -> BlurView(ctx) },
                 update = { v ->
-                    // 首次 setup：绑定页面 BlurTarget（由 AppRoot 通过 tag 注入）
                     if (!setupDone) {
-                        val target = (context as? android.app.Activity)
-                            ?.window?.decorView
-                            ?.getTag(R.id.blur_target_tag) as? BlurTarget
+                        // 查找页面 BlurTarget（AppRoot 创建，存于 content 视图树）
+                        val activity = context as? android.app.Activity
+                        val content = activity?.findViewById<android.view.View>(android.R.id.content)
+                        val target = content?.getTag(android.R.id.content) as? BlurTarget
                         if (target != null) {
                             v.setupWith(target)
                             setupDone = true
