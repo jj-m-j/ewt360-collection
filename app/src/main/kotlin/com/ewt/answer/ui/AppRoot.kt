@@ -227,110 +227,111 @@ fun AppRoot() {
                 BlurTarget(ctx)
             },
             modifier = Modifier.fillMaxSize(),
-        ) {
-            // 双层渲染：背景=上一页（Main 常驻防瞬移），顶层=当前页（手势跟随）
-            Box(Modifier.fillMaxSize()) {
-                if (previous != null && (previous == Screen.Main || showPrevLayer)) {
+            content = {
+                // 双层渲染：背景=上一页（Main 常驻防瞬移），顶层=当前页（手势跟随）
+                Box(Modifier.fillMaxSize()) {
+                    if (previous != null && (previous == Screen.Main || showPrevLayer)) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    val p = backProgress.value
+                                    if (previous == Screen.Main) {
+                                        alpha = if (showPrevLayer) 0.9f + 0.1f * p else 0f
+                                        translationX = -0.25f * size.width * (if (showPrevLayer) (1f - p) else 1f)
+                                    } else {
+                                        alpha = 0.9f + 0.1f * p
+                                        translationX = -0.25f * size.width * (1f - p)
+                                    }
+                                },
+                        ) {
+                            RenderScreen(
+                                screen = previous!!,
+                                userInfo = userInfo,
+                                paperCounts = paperCounts,
+                                listState = homeListState,
+                                tab = tab,
+                                onTabSelect = { tab = it },
+                                repo = repo,
+                                accuracy = accuracy,
+                                fontEnabled = fontEnabled,
+                                onFontEnabledChange = { en ->
+                                    fontEnabled = en
+                                    prefs.edit().putBoolean("font_enabled", en).apply()
+                                    if (!en) MiuixFonts.clearCache(context)
+                                },
+                                onAccuracyChange = { a ->
+                                    accuracy = a
+                                    prefs.edit().putInt("accuracy", a).apply()
+                                },
+                                navigateTo = { navigateTo(it) },
+                                onBack = { goBack() },
+                                onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
+                            )
+                        }
+                    }
+                    // 顶层：当前页（手势跟随：位移 + 缩放 + 圆角）
                     Box(
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
                                 val p = backProgress.value
-                                if (previous == Screen.Main) {
-                                    alpha = if (showPrevLayer) 0.9f + 0.1f * p else 0f
-                                    translationX = -0.25f * size.width * (if (showPrevLayer) (1f - p) else 1f)
-                                } else {
-                                    alpha = 0.9f + 0.1f * p
-                                    translationX = -0.25f * size.width * (1f - p)
+                                translationX = size.width * p
+                                scaleX = 1f - 0.08f * p
+                                scaleY = 1f - 0.08f * p
+                                if (p > 0f) {
+                                    shape = RoundedCornerShape(28.dp.toPx() * p)
+                                    clip = true
                                 }
                             },
                     ) {
-                        RenderScreen(
-                            screen = previous!!,
-                            userInfo = userInfo,
-                            paperCounts = paperCounts,
-                            listState = homeListState,
-                            tab = tab,
-                            onTabSelect = { tab = it },
-                            repo = repo,
-                            accuracy = accuracy,
-                            fontEnabled = fontEnabled,
-                            onFontEnabledChange = { en ->
-                                fontEnabled = en
-                                prefs.edit().putBoolean("font_enabled", en).apply()
-                                if (!en) MiuixFonts.clearCache(context)
+                        AnimatedContent(
+                            targetState = screen,
+                            transitionSpec = {
+                                when {
+                                    gestureCommitted -> fadeIn(tween(1)).togetherWith(fadeOut(tween(1)))
+                                    targetState is Screen.Questions ||
+                                        targetState is Screen.LinkQuery ||
+                                        targetState is Screen.Debug -> {
+                                        (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
+                                            .togetherWith(fadeOut(tween(200)))
+                                    }
+                                    else -> {
+                                        (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { -it / 3 })
+                                            .togetherWith(fadeOut(tween(200)))
+                                    }
+                                }
                             },
-                            onAccuracyChange = { a ->
-                                accuracy = a
-                                prefs.edit().putInt("accuracy", a).apply()
-                            },
-                            navigateTo = { navigateTo(it) },
-                            onBack = { goBack() },
-                            onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
-                        )
+                            label = "screen",
+                        ) { s ->
+                            RenderScreen(
+                                screen = s,
+                                userInfo = userInfo,
+                                paperCounts = paperCounts,
+                                listState = homeListState,
+                                tab = tab,
+                                onTabSelect = { tab = it },
+                                repo = repo,
+                                accuracy = accuracy,
+                                fontEnabled = fontEnabled,
+                                onFontEnabledChange = { en ->
+                                    fontEnabled = en
+                                    prefs.edit().putBoolean("font_enabled", en).apply()
+                                    if (!en) MiuixFonts.clearCache(context)
+                                },
+                                onAccuracyChange = { a ->
+                                    accuracy = a
+                                    prefs.edit().putInt("accuracy", a).apply()
+                                },
+                                navigateTo = { navigateTo(it) },
+                                onBack = { goBack() },
+                                onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
+                            )
+                        }
                     }
                 }
-                // 顶层：当前页（手势跟随：位移 + 缩放 + 圆角）
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            val p = backProgress.value
-                            translationX = size.width * p
-                            scaleX = 1f - 0.08f * p
-                            scaleY = 1f - 0.08f * p
-                            if (p > 0f) {
-                                shape = RoundedCornerShape(28.dp.toPx() * p)
-                                clip = true
-                            }
-                        },
-                ) {
-                    AnimatedContent(
-                        targetState = screen,
-                        transitionSpec = {
-                            when {
-                                gestureCommitted -> fadeIn(tween(1)).togetherWith(fadeOut(tween(1)))
-                                targetState is Screen.Questions ||
-                                    targetState is Screen.LinkQuery ||
-                                    targetState is Screen.Debug -> {
-                                    (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
-                                        .togetherWith(fadeOut(tween(200)))
-                                }
-                                else -> {
-                                    (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { -it / 3 })
-                                        .togetherWith(fadeOut(tween(200)))
-                                }
-                            }
-                        },
-                        label = "screen",
-                    ) { s ->
-                        RenderScreen(
-                            screen = s,
-                            userInfo = userInfo,
-                            paperCounts = paperCounts,
-                            listState = homeListState,
-                            tab = tab,
-                            onTabSelect = { tab = it },
-                            repo = repo,
-                            accuracy = accuracy,
-                            fontEnabled = fontEnabled,
-                            onFontEnabledChange = { en ->
-                                fontEnabled = en
-                                prefs.edit().putBoolean("font_enabled", en).apply()
-                                if (!en) MiuixFonts.clearCache(context)
-                            },
-                            onAccuracyChange = { a ->
-                                accuracy = a
-                                prefs.edit().putInt("accuracy", a).apply()
-                            },
-                            navigateTo = { navigateTo(it) },
-                            onBack = { goBack() },
-                            onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
-                        )
-                    }
-                }
-            }
-        }
+            },
+        )
 
         // 首次使用：字体下载询问
         if (showFontPrompt) {
@@ -484,8 +485,12 @@ private fun MainLayer(
                 )
             }
         }
-        // 悬浮胶囊底栏（BlurView 实时模糊背景）
-        BlurredTabBar(tab = tab, onTabSelect = onTabSelect)
+        // 悬浮胶囊底栏（BlurView 实时模糊背景），align 在 BoxScope 内提供
+        BlurredTabBar(
+            tab = tab,
+            onTabSelect = onTabSelect,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
     }
 }
 
@@ -494,14 +499,14 @@ private fun MainLayer(
 private fun BlurredTabBar(
     tab: Int,
     onTabSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val surfaceColor = MiuixTheme.colorScheme.surface
     val context = LocalContext.current
     var setupDone by remember { mutableStateOf(false) }
 
     Box(
-        Modifier
-            .align(Alignment.BottomCenter)
+        modifier
             .padding(horizontal = 20.dp, vertical = 10.dp)
             .shadow(8.dp, RoundedCornerShape(28.dp))
             .fillMaxWidth()
