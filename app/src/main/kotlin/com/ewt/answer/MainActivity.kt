@@ -8,10 +8,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import com.ewt.answer.ui.AppRoot
 
 class MainActivity : ComponentActivity() {
@@ -20,7 +16,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            var dark by remember { mutableStateOf(isSystemInDarkTheme()) }
+            val dark = isSystemInDarkTheme()
 
             DisposableEffect(dark) {
                 enableEdgeToEdge(
