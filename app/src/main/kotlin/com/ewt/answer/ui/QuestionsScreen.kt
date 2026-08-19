@@ -54,6 +54,7 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -67,6 +68,10 @@ fun QuestionsScreen(
     val failed by vm.failed.collectAsState()
     val fetching by vm.fetching.collectAsState()
     val done by vm.done.collectAsState()
+    val submitting by vm.submitting.collectAsState()
+    val submitResult by vm.submitResult.collectAsState()
+
+    var showSubmitDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { vm.load() }
 
@@ -146,8 +151,11 @@ fun QuestionsScreen(
                             fetching = fetching,
                             failedCount = failed.size,
                             allFetched = done == questions.size && failed.isEmpty() && done > 0,
+                            submitting = submitting,
+                            submitResult = submitResult,
                             onFetchAll = { vm.fetchAllAnswers() },
                             onRetryFailed = { vm.retryFailed() },
+                            onRequestSubmit = { showSubmitDialog = true },
                         )
                     }
 
@@ -171,6 +179,40 @@ fun QuestionsScreen(
             }
         }
     }
+
+    // 提交确认对话框
+    if (showSubmitDialog) {
+        OverlayDialog(
+            show = true,
+            title = "提交答案",
+            summary = "提交后试卷将标记为已交卷",
+            onDismissRequest = { showSubmitDialog = false },
+        ) {
+            Column {
+                Text(
+                    text = "将提交全部已获取的选择题标准答案；非选择题按自批处理，随后交卷并自批。确定继续？",
+                    fontSize = 13.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(text = "取消", onClick = { showSubmitDialog = false })
+                    Spacer(Modifier.size(8.dp))
+                    TextButton(
+                        text = "确认提交",
+                        onClick = {
+                            showSubmitDialog = false
+                            vm.submitAnswers()
+                        },
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -180,8 +222,11 @@ private fun FetchHeaderCard(
     fetching: Boolean,
     failedCount: Int,
     allFetched: Boolean,
+    submitting: Boolean,
+    submitResult: String?,
     onFetchAll: () -> Unit,
     onRetryFailed: () -> Unit,
+    onRequestSubmit: () -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -251,9 +296,37 @@ private fun FetchHeaderCard(
                 }
             }
 
+            // 提交答案
+            if (done > 0 && !fetching) {
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = onRequestSubmit,
+                    enabled = !submitting && done > 0,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = if (submitting) "正在提交…" else "提交答案",
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+
+            if (submitResult != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = submitResult,
+                    fontSize = 12.sp,
+                    color = if (submitResult.startsWith("提交失败")) {
+                        MiuixTheme.colorScheme.error
+                    } else {
+                        MiuixTheme.colorScheme.primary
+                    },
+                )
+            }
+
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "点击题目行可展开查看答案、解析与知识点；本应用仅查询展示，不会提交任何答案。",
+                text = "点击题目行可展开查看答案、解析与知识点；提交前请确认已获取全部答案。",
                 fontSize = 11.sp,
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             )
