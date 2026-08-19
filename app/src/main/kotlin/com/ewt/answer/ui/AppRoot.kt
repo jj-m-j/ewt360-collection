@@ -1,6 +1,8 @@
 package com.ewt.answer.ui
 
 import android.content.Context
+import android.view.View
+import android.view.ViewGroup
 import androidx.activity.BackEventCompat
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
@@ -131,9 +133,6 @@ fun AppRoot() {
         // 主页列表滚动位置（跨页面保留，返回不跳顶）
         val homeListState: LazyListState = rememberLazyListState()
 
-        // BlurView 目标（页面内容容器，供悬浮底栏实时模糊）
-        var blurTarget by remember { mutableStateOf<BlurTarget?>(null) }
-
         // ── 预测式返回：手势进度驱动（参考 MIUIX NavDisplay MiuixDefault 转场） ──
         val backProgress = remember { Animatable(0f) }
         var showPrevLayer by remember { mutableStateOf(false) }
@@ -225,7 +224,7 @@ fun AppRoot() {
         // ── 页面内容包进 BlurTarget（供 BlurView 捕获实时模糊） ──
         AndroidView(
             factory = { ctx ->
-                BlurTarget(ctx).also { blurTarget = it }
+                BlurTarget(ctx)
             },
             modifier = Modifier.fillMaxSize(),
         ) {
@@ -514,10 +513,10 @@ private fun BlurredTabBar(
                 factory = { ctx -> BlurView(ctx) },
                 update = { v ->
                     if (!setupDone) {
-                        // 查找页面 BlurTarget（AppRoot 创建，存于 content 视图树）
+                        // 从视图树中查找页面 BlurTarget（AppRoot 创建）
                         val activity = context as? android.app.Activity
-                        val content = activity?.findViewById<android.view.View>(android.R.id.content)
-                        val target = content?.getTag(android.R.id.content) as? BlurTarget
+                        val content = activity?.findViewById<View>(android.R.id.content)
+                        val target = content?.let { findBlurTarget(it) }
                         if (target != null) {
                             v.setupWith(target)
                             setupDone = true
@@ -551,6 +550,17 @@ private fun BlurredTabBar(
             )
         }
     }
+}
+
+/** 深度遍历视图树查找 BlurTarget */
+private fun findBlurTarget(view: View): BlurTarget? {
+    if (view is BlurTarget) return view
+    if (view is ViewGroup) {
+        for (i in 0 until view.childCount) {
+            findBlurTarget(view.getChildAt(i))?.let { return it }
+        }
+    }
+    return null
 }
 
 @Composable
