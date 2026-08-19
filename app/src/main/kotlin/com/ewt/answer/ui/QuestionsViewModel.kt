@@ -109,7 +109,7 @@ class QuestionsViewModel(
             val counter = AtomicInteger(0)
             val results = _answers.value.toMutableMap()
             val failedIds = _failed.value.toMutableSet()
-            kotlinx.coroutines.launch(Dispatchers.IO) {
+            launch(Dispatchers.IO) {
                 try {
                     val a = repo.fetchAnswer(s, question)
                     if (a != null) {
@@ -143,7 +143,7 @@ class QuestionsViewModel(
         try {
             coroutineScope {
                 questions.map { q ->
-                    kotlinx.coroutines.launch(Dispatchers.IO) {
+                    launch(Dispatchers.IO) {
                         semaphore.withPermit {
                             try {
                                 val a = repo.fetchAnswer(s, q)
