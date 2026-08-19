@@ -37,14 +37,18 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import com.ewt.answer.data.AppContainer
 import com.ewt.answer.data.EwtRepository
 import com.ewt.answer.data.Paper
@@ -466,30 +470,63 @@ private fun MainLayer(
                 )
             }
         }
-        // 悬浮胶囊底栏（半透明毛玻璃感，稳定版无 BlurView）
-        Box(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .padding(horizontal = 20.dp, vertical = 10.dp)
-                .shadow(8.dp, RoundedCornerShape(28.dp))
-                .background(MiuixTheme.colorScheme.surface.copy(alpha = 0.94f), RoundedCornerShape(28.dp))
-                .fillMaxWidth()
-                .height(52.dp),
-        ) {
-            Row(Modifier.fillMaxSize()) {
-                TabItem(
-                    text = "试卷",
-                    selected = tab == TAB_PAPERS,
-                    onClick = { onTabSelect(TAB_PAPERS) },
-                    modifier = Modifier.weight(1f),
-                )
-                TabItem(
-                    text = "关于",
-                    selected = tab == TAB_ABOUT,
-                    onClick = { onTabSelect(TAB_ABOUT) },
-                    modifier = Modifier.weight(1f),
-                )
-            }
+        // 悬浮胶囊底栏（QmBlurView 实时模糊 + 半透明 Surface + 清晰文字）
+        BlurredTabBar(
+            tab = tab,
+            onTabSelect = onTabSelect,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
+    }
+}
+
+/** 悬浮胶囊底栏：QmBlurView 实时高斯模糊 + 半透明 Surface + 清晰文字 */
+@Composable
+private fun BlurredTabBar(
+    tab: Int,
+    onTabSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val surfaceColor = MiuixTheme.colorScheme.surface
+    val density = LocalDensity.current
+    val radiusPx = with(density) { 14.dp.toPx() }
+    val cornerPx = with(density) { 28.dp.toPx() }
+
+    Box(
+        modifier
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .shadow(8.dp, RoundedCornerShape(28.dp))
+            .fillMaxWidth()
+            .height(52.dp)
+            .clip(RoundedCornerShape(28.dp)),
+    ) {
+        // QmBlurView：Native C++ 实时模糊，自动捕获 DecorView 内容
+        AndroidView(
+            factory = { ctx ->
+                com.qmdeve.blurview.widget.BlurView(ctx, null).apply {
+                    setBlurRadius(radiusPx)
+                    setOverlayColor(surfaceColor.copy(alpha = 0.92f).toArgb())
+                    setCornerRadius(cornerPx)
+                }
+            },
+            update = { v ->
+                v.setBlurRadius(radiusPx)
+                v.setOverlayColor(surfaceColor.copy(alpha = 0.92f).toArgb())
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+        Row(Modifier.fillMaxSize()) {
+            TabItem(
+                text = "试卷",
+                selected = tab == TAB_PAPERS,
+                onClick = { onTabSelect(TAB_PAPERS) },
+                modifier = Modifier.weight(1f),
+            )
+            TabItem(
+                text = "关于",
+                selected = tab == TAB_ABOUT,
+                onClick = { onTabSelect(TAB_ABOUT) },
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
