@@ -35,7 +35,6 @@ import com.ewt.answer.data.HomeworkGroup
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.PaperLinkParser
 import com.ewt.answer.data.UserInfo
-import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
@@ -50,18 +49,21 @@ import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
 fun HomeScreen(
     userInfo: UserInfo?,
     onOpenPaper: (Paper) -> Unit,
-    onLogout: () -> Unit,
 ) {
     val vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
     val uiState by vm.uiState.collectAsState()
     val refreshing by vm.refreshing.collectAsState()
     val statusText by vm.statusText.collectAsState()
+
+    var showLinkDialog by remember { mutableStateOf(false) }
+    var showAboutDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { vm.load() }
 
@@ -73,16 +75,10 @@ fun HomeScreen(
                 title = "试卷列表",
                 subtitle = userInfo?.realName?.let { "你好，$it" } ?: "",
                 navigationIcon = {
-                    IconButton(onClick = onLogout) {
-                        Text(
-                            text = "退出",
-                            fontSize = 14.sp,
-                            color = MiuixTheme.colorScheme.onSurface,
-                        )
-                    }
+                    TextButton(text = "刷新", onClick = { vm.load(force = true) })
                 },
                 actions = {
-                    TextButton(text = "刷新", onClick = { vm.load(force = true) })
+                    TextButton(text = "关于", onClick = { showAboutDialog = true })
                 },
                 scrollBehavior = scrollBehavior,
             )
@@ -104,7 +100,7 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 item(key = "link") {
-                    LinkQueryCard(onPaper = onOpenPaper)
+                    LinkQueryEntry(onClick = { showLinkDialog = true })
                 }
 
                 when (val state = uiState) {
@@ -168,6 +164,17 @@ fun HomeScreen(
             }
         }
     }
+
+    if (showLinkDialog) {
+        LinkQueryDialog(
+            onDismiss = { showLinkDialog = false },
+            onPaper = onOpenPaper,
+        )
+    }
+
+    if (showAboutDialog) {
+        AboutDialog(onDismiss = { showAboutDialog = false })
+    }
 }
 
 @Composable
@@ -218,7 +225,7 @@ private fun PaperRow(paper: Paper, onClick: () -> Unit) {
             Spacer(Modifier.size(8.dp))
             IconButton(onClick = onClick, modifier = Modifier.size(32.dp)) {
                 Icon(
-                    imageVector = MiuixIcons.Basic.ArrowRight,
+                    imageVector = MiuixIcon.Basic.ArrowRight,
                     contentDescription = "打开试卷",
                     tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
                 )
@@ -227,31 +234,58 @@ private fun PaperRow(paper: Paper, onClick: () -> Unit) {
     }
 }
 
+/** 粘贴链接查询入口卡片：点击后弹出输入框对话框 */
 @Composable
-private fun LinkQueryCard(onPaper: (Paper) -> Unit) {
-    val state = rememberTextFieldState()
-    var error by remember { mutableStateOf<String?>(null) }
-
+private fun LinkQueryEntry(onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 6.dp),
-        insideMargin = PaddingValues(16.dp),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+        onClick = onClick,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = "粘贴链接查询",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = "输入 EWT360 试题链接，直接查询对应试卷",
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+            Icon(
+                imageVector = MiuixIcon.Basic.ArrowRight,
+                contentDescription = "粘贴链接查询",
+                tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+            )
+        }
+    }
+}
+
+@Composable
+private fun LinkQueryDialog(
+    onDismiss: () -> Unit,
+    onPaper: (Paper) -> Unit,
+) {
+    val state = rememberTextFieldState()
+    var error by remember { mutableStateOf<String?>(null) }
+
+    OverlayDialog(
+        show = true,
+        title = "粘贴链接查询",
+        summary = "支持 web.ewt360.com/answer-pc/exam/answer?paperId=… 等试题链接",
+        onDismissRequest = onDismiss,
     ) {
         Column {
-            Text(
-                text = "粘贴链接查询",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = MiuixTheme.colorScheme.onSurface,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "支持 EWT360 试题页面链接，如 web.ewt360.com/answer-pc/exam/answer?paperId=…",
-                fontSize = 11.sp,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-            Spacer(Modifier.height(10.dp))
             TextField(
                 state = state,
                 label = "粘贴试题链接",
@@ -267,21 +301,54 @@ private fun LinkQueryCard(onPaper: (Paper) -> Unit) {
                     color = MiuixTheme.colorScheme.error,
                 )
             }
-            Spacer(Modifier.height(10.dp))
-            Button(
-                onClick = {
-                    val raw = state.text.toString()
-                    val parsed = PaperLinkParser.parse(raw)
-                    if (parsed == null) {
-                        error = "链接无效：未找到 paperId 参数"
-                    } else {
-                        error = null
-                        onPaper(PaperLinkParser.toPaper(parsed))
-                    }
-                },
+            Spacer(Modifier.height(12.dp))
+            Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("查询试卷", fontSize = 14.sp)
+                TextButton(text = "取消", onClick = onDismiss)
+                Spacer(Modifier.size(8.dp))
+                TextButton(
+                    text = "查询",
+                    onClick = {
+                        val raw = state.text.toString()
+                        val parsed = PaperLinkParser.parse(raw)
+                        if (parsed == null) {
+                            error = "链接无效：未找到 paperId 参数"
+                        } else {
+                            error = null
+                            onDismiss()
+                            onPaper(PaperLinkParser.toPaper(parsed))
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutDialog(onDismiss: () -> Unit) {
+    OverlayDialog(
+        show = true,
+        title = "关于",
+        summary = "EWT360 答案查询 v1.0.0",
+        onDismissRequest = onDismiss,
+    ) {
+        Column {
+            Text(
+                text = "关于页面暂未开发",
+                fontSize = 14.sp,
+                color = MiuixTheme.colorScheme.onSurfaceSecondary,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(text = "知道了", onClick = onDismiss)
             }
         }
     }
