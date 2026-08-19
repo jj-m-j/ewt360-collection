@@ -1,5 +1,6 @@
 package com.ewt.answer.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -111,6 +116,23 @@ fun AnswerDetailCard(
                 Spacer(Modifier.height(12.dp))
                 SectionLabel("图片")
                 AttachmentImageList(a.attachmentImages)
+            }
+
+            // 调试：答案与解析均未提取到时，展示接口原始返回
+            if (a.answer.isBlank() && a.analysisHtml.isBlank() && a.rawJson.isNotBlank()) {
+                var showRaw by remember { mutableStateOf(false) }
+                Spacer(Modifier.height(10.dp))
+                TextButton(
+                    text = if (showRaw) "收起原始返回" else "查看接口原始返回",
+                    onClick = { showRaw = !showRaw },
+                )
+                AnimatedVisibility(visible = showRaw) {
+                    Text(
+                        text = a.rawJson,
+                        fontSize = 10.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                }
             }
         }
     }
