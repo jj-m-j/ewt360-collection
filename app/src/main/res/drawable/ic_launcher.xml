@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- EWT360 答案查询 应用图标：蓝色圆角方块 + 白色学士帽 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 背景：圆角方块 -->
+    <path
+        android:fillColor="#3482FF"
+        android:pathData="M24,0 L84,0 A24,24 0 0 1 108,24 L108,84 A24,24 0 0 1 84,108 L24,108 A24,24 0 0 1 0,84 L0,24 A24,24 0 0 1 24,0 Z" />
+
+    <!-- 学士帽：菱形顶 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28 L80,41 L54,54 L28,41 Z" />
+
+    <!-- 学士帽：帽身 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M33,47 L33,66 C33,75 42.4,81 54,81 C65.6,81 75,75 75,66 L75,47 L54,59.5 Z" />
+
+    <!-- 帽穗圆点 -->
+    <path
+        android:fillColor="#EAF2FF"
+        android:pathData="M80,38 a4,4 0 1 1 -0.01,0 Z" />
+</vector>
