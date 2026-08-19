@@ -43,6 +43,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.DisposeOnViewTreeLifecycleDestroyed
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -221,116 +223,128 @@ fun AppRoot() {
             }
         }
 
-        // ── 页面内容包进 BlurTarget（供 BlurView 捕获实时模糊） ──
-        AndroidView(
-            factory = { ctx ->
-                BlurTarget(ctx)
-            },
-            modifier = Modifier.fillMaxSize(),
-            content = {
-                // 双层渲染：背景=上一页（Main 常驻防瞬移），顶层=当前页（手势跟随）
-                Box(Modifier.fillMaxSize()) {
-                    if (previous != null && (previous == Screen.Main || showPrevLayer)) {
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    val p = backProgress.value
-                                    if (previous == Screen.Main) {
-                                        alpha = if (showPrevLayer) 0.9f + 0.1f * p else 0f
-                                        translationX = -0.25f * size.width * (if (showPrevLayer) (1f - p) else 1f)
-                                    } else {
-                                        alpha = 0.9f + 0.1f * p
-                                        translationX = -0.25f * size.width * (1f - p)
-                                    }
-                                },
-                        ) {
-                            RenderScreen(
-                                screen = previous!!,
-                                userInfo = userInfo,
-                                paperCounts = paperCounts,
-                                listState = homeListState,
-                                tab = tab,
-                                onTabSelect = { tab = it },
-                                repo = repo,
-                                accuracy = accuracy,
-                                fontEnabled = fontEnabled,
-                                onFontEnabledChange = { en ->
-                                    fontEnabled = en
-                                    prefs.edit().putBoolean("font_enabled", en).apply()
-                                    if (!en) MiuixFonts.clearCache(context)
-                                },
-                                onAccuracyChange = { a ->
-                                    accuracy = a
-                                    prefs.edit().putInt("accuracy", a).apply()
-                                },
-                                navigateTo = { navigateTo(it) },
-                                onBack = { goBack() },
-                                onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
-                            )
-                        }
-                    }
-                    // 顶层：当前页（手势跟随：位移 + 缩放 + 圆角）
+        // ── 页面内容（双层渲染：背景=上一页，顶层=当前页） ──
+        val pageContent: @Composable () -> Unit = {
+            Box(Modifier.fillMaxSize()) {
+                if (previous != null && (previous == Screen.Main || showPrevLayer)) {
                     Box(
                         Modifier
                             .fillMaxSize()
                             .graphicsLayer {
                                 val p = backProgress.value
-                                translationX = size.width * p
-                                scaleX = 1f - 0.08f * p
-                                scaleY = 1f - 0.08f * p
-                                if (p > 0f) {
-                                    shape = RoundedCornerShape(28.dp.toPx() * p)
-                                    clip = true
+                                if (previous == Screen.Main) {
+                                    alpha = if (showPrevLayer) 0.9f + 0.1f * p else 0f
+                                    translationX = -0.25f * size.width * (if (showPrevLayer) (1f - p) else 1f)
+                                } else {
+                                    alpha = 0.9f + 0.1f * p
+                                    translationX = -0.25f * size.width * (1f - p)
                                 }
                             },
                     ) {
-                        AnimatedContent(
-                            targetState = screen,
-                            transitionSpec = {
-                                when {
-                                    gestureCommitted -> fadeIn(tween(1)).togetherWith(fadeOut(tween(1)))
-                                    targetState is Screen.Questions ||
-                                        targetState is Screen.LinkQuery ||
-                                        targetState is Screen.Debug -> {
-                                        (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
-                                            .togetherWith(fadeOut(tween(200)))
-                                    }
-                                    else -> {
-                                        (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { -it / 3 })
-                                            .togetherWith(fadeOut(tween(200)))
-                                    }
-                                }
+                        RenderScreen(
+                            screen = previous!!,
+                            userInfo = userInfo,
+                            paperCounts = paperCounts,
+                            listState = homeListState,
+                            tab = tab,
+                            onTabSelect = { tab = it },
+                            repo = repo,
+                            accuracy = accuracy,
+                            fontEnabled = fontEnabled,
+                            onFontEnabledChange = { en ->
+                                fontEnabled = en
+                                prefs.edit().putBoolean("font_enabled", en).apply()
+                                if (!en) MiuixFonts.clearCache(context)
                             },
-                            label = "screen",
-                        ) { s ->
-                            RenderScreen(
-                                screen = s,
-                                userInfo = userInfo,
-                                paperCounts = paperCounts,
-                                listState = homeListState,
-                                tab = tab,
-                                onTabSelect = { tab = it },
-                                repo = repo,
-                                accuracy = accuracy,
-                                fontEnabled = fontEnabled,
-                                onFontEnabledChange = { en ->
-                                    fontEnabled = en
-                                    prefs.edit().putBoolean("font_enabled", en).apply()
-                                    if (!en) MiuixFonts.clearCache(context)
-                                },
-                                onAccuracyChange = { a ->
-                                    accuracy = a
-                                    prefs.edit().putInt("accuracy", a).apply()
-                                },
-                                navigateTo = { navigateTo(it) },
-                                onBack = { goBack() },
-                                onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
-                            )
-                        }
+                            onAccuracyChange = { a ->
+                                accuracy = a
+                                prefs.edit().putInt("accuracy", a).apply()
+                            },
+                            navigateTo = { navigateTo(it) },
+                            onBack = { goBack() },
+                            onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
+                        )
                     }
                 }
+                // 顶层：当前页（手势跟随：位移 + 缩放 + 圆角）
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            val p = backProgress.value
+                            translationX = size.width * p
+                            scaleX = 1f - 0.08f * p
+                            scaleY = 1f - 0.08f * p
+                            if (p > 0f) {
+                                shape = RoundedCornerShape(28.dp.toPx() * p)
+                                clip = true
+                            }
+                        },
+                ) {
+                    AnimatedContent(
+                        targetState = screen,
+                        transitionSpec = {
+                            when {
+                                gestureCommitted -> fadeIn(tween(1)).togetherWith(fadeOut(tween(1)))
+                                targetState is Screen.Questions ||
+                                    targetState is Screen.LinkQuery ||
+                                    targetState is Screen.Debug -> {
+                                    (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
+                                        .togetherWith(fadeOut(tween(200)))
+                                }
+                                else -> {
+                                    (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { -it / 3 })
+                                        .togetherWith(fadeOut(tween(200)))
+                                }
+                            }
+                        },
+                        label = "screen",
+                    ) { s ->
+                        RenderScreen(
+                            screen = s,
+                            userInfo = userInfo,
+                            paperCounts = paperCounts,
+                            listState = homeListState,
+                            tab = tab,
+                            onTabSelect = { tab = it },
+                            repo = repo,
+                            accuracy = accuracy,
+                            fontEnabled = fontEnabled,
+                            onFontEnabledChange = { en ->
+                                fontEnabled = en
+                                prefs.edit().putBoolean("font_enabled", en).apply()
+                                if (!en) MiuixFonts.clearCache(context)
+                            },
+                            onAccuracyChange = { a ->
+                                accuracy = a
+                                prefs.edit().putInt("accuracy", a).apply()
+                            },
+                            navigateTo = { navigateTo(it) },
+                            onBack = { goBack() },
+                            onPaperOpened = { id, c -> if (c > 0) paperCounts = paperCounts + (id to c) },
+                        )
+                    }
+                }
+            }
+        }
+
+        // ── 页面内容包进 BlurTarget（供悬浮底栏 BlurView 实时模糊） ──
+        AndroidView(
+            factory = { ctx ->
+                BlurTarget(ctx).apply {
+                    addView(
+                        ComposeView(ctx).apply {
+                            setViewCompositionStrategy(DisposeOnViewTreeLifecycleDestroyed)
+                            setContent { pageContent() }
+                        },
+                        ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                        ),
+                    )
+                }
             },
+            modifier = Modifier.fillMaxSize(),
         )
 
         // 首次使用：字体下载询问
