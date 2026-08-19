@@ -1,5 +1,6 @@
 package com.ewt.answer.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -9,6 +10,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -60,6 +63,18 @@ fun AppRoot() {
         var userInfo by remember { mutableStateOf<UserInfo?>(null) }
         // paperId → 真实题数（打开试卷后回传，主页展示）
         var paperCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+        // 主页列表滚动位置（跨页面保留，返回不跳顶）
+        val homeListState: LazyListState = rememberLazyListState()
+
+        // 系统返回键/侧滑手势：二级页面返回上一级，不退出应用
+        BackHandler(enabled = screen !is Screen.Home && screen !is Screen.Login && screen !is Screen.Boot) {
+            screen = when (screen) {
+                is Screen.Questions -> Screen.Home
+                Screen.LinkQuery -> Screen.Home
+                Screen.Debug -> Screen.Home
+                else -> screen
+            }
+        }
 
         // 启动：校验已保存的登录态
         LaunchedEffect(Unit) {
@@ -95,6 +110,7 @@ fun AppRoot() {
                 Screen.Home -> HomeScreen(
                     userInfo = userInfo,
                     paperCounts = paperCounts,
+                    listState = homeListState,
                     onOpenPaper = { paper -> screen = Screen.Questions(paper) },
                     onOpenLinkQuery = { screen = Screen.LinkQuery },
                     onOpenDebug = { screen = Screen.Debug },
