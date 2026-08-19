@@ -44,7 +44,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.DisposeOnViewTreeLifecycleDestroyed
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -334,7 +333,6 @@ fun AppRoot() {
                 BlurTarget(ctx).apply {
                     addView(
                         ComposeView(ctx).apply {
-                            setViewCompositionStrategy(DisposeOnViewTreeLifecycleDestroyed)
                             setContent { pageContent() }
                         },
                         ViewGroup.LayoutParams(
