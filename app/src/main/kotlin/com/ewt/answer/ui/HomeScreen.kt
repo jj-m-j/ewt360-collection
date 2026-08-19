@@ -1,7 +1,5 @@
 package com.ewt.answer.ui
 
-import android.content.Intent
-import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,36 +9,27 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.ewt.answer.data.DebugLog
 import com.ewt.answer.data.HomeworkGroup
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.UserInfo
-import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
@@ -55,7 +44,6 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.window.WindowDialog
 
 @Composable
 fun HomeScreen(
@@ -63,6 +51,7 @@ fun HomeScreen(
     paperCounts: Map<String, Int>,
     onOpenPaper: (Paper) -> Unit,
     onOpenLinkQuery: () -> Unit,
+    onOpenDebug: () -> Unit,
 ) {
     val vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
     val uiState by vm.uiState.collectAsState()
@@ -70,8 +59,6 @@ fun HomeScreen(
     val statusText by vm.statusText.collectAsState()
     val dateFilter by vm.dateFilter.collectAsState()
     val subjectFilter by vm.subjectFilter.collectAsState()
-
-    var showAboutDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { vm.load() }
 
@@ -86,7 +73,7 @@ fun HomeScreen(
                     TextButton(text = "刷新", onClick = { vm.load(force = true) })
                 },
                 actions = {
-                    TextButton(text = "关于", onClick = { showAboutDialog = true })
+                    TextButton(text = "调试模式", onClick = onOpenDebug)
                 },
                 scrollBehavior = scrollBehavior,
             )
@@ -223,10 +210,6 @@ fun HomeScreen(
                 }
             }
         }
-    }
-
-    if (showAboutDialog) {
-        AboutDialog(onDismiss = { showAboutDialog = false })
     }
 }
 
@@ -374,93 +357,6 @@ private fun LinkQueryEntry(onClick: () -> Unit) {
                 tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
             )
         }
-    }
-}
-
-/** 关于 / 调试面板：版本 + 日志 + 字体下载（WindowDialog 不依赖 Scaffold，保证可显示） */
-@Composable
-private fun AboutDialog(onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var showLog by remember { mutableStateOf(false) }
-    var fontLoading by remember { mutableStateOf(false) }
-
-    WindowDialog(
-        show = true,
-        title = "关于",
-        summary = "EWT360 答案查询 v1.0.0",
-        onDismissRequest = onDismiss,
-    ) {
-        Column {
-            Text(
-                text = "调试模式已开启，日志保存在本地 filesDir/logs/app.log",
-                fontSize = 12.sp,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-            Spacer(Modifier.height(10.dp))
-            if (showLog) {
-                val log = DebugLog.readLog()
-                Text(
-                    text = log.takeLast(3000).ifBlank { "(暂无日志)" },
-                    fontSize = 10.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 220.dp)
-                        .verticalScroll(rememberScrollState()),
-                )
-            }
-            Spacer(Modifier.height(10.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(
-                    text = if (showLog) "收起日志" else "查看日志",
-                    onClick = { showLog = !showLog },
-                )
-                Spacer(Modifier.size(4.dp))
-                TextButton(
-                    text = if (fontLoading) "下载中…" else "下载字体",
-                    enabled = !fontLoading,
-                    onClick = {
-                        fontLoading = true
-                        scope.launch {
-                            val ok = MiuixFonts.loadMiSans(context) != null
-                            Toast.makeText(
-                                context,
-                                if (ok) "字体下载成功" else "字体下载失败",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                            fontLoading = false
-                        }
-                    },
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(text = "分享日志", onClick = { shareLog(context) })
-                Spacer(Modifier.size(4.dp))
-                TextButton(text = "清空日志", onClick = { DebugLog.clear() })
-                Spacer(Modifier.size(4.dp))
-                TextButton(text = "知道了", onClick = onDismiss)
-            }
-        }
-    }
-}
-
-private fun shareLog(context: android.content.Context) {
-    runCatching {
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_SUBJECT, "EWT360 调试日志")
-            putExtra(Intent.EXTRA_TEXT, DebugLog.readLog().takeLast(20000))
-        }
-        context.startActivity(Intent.createChooser(intent, "分享日志"))
     }
 }
 
