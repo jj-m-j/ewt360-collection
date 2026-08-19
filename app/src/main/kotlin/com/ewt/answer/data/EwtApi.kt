@@ -28,6 +28,7 @@ class EwtException(message: String, val code: Int = 0, cause: Throwable? = null)
 /**
  * EWT360 网关传输层
  * 对应 ewt-getanwser.js / EWT-TOOL-main / opt.js 的接口逻辑。
+ * 注意：提交接口路径区分大小写，submitanswer 必须小写（opt.js / EWT-TOOL-main 实测）。
  */
 object EwtApi {
 
@@ -123,7 +124,8 @@ object EwtApi {
                 DebugLog.e("API", "业务失败 $url msg=$msg\n${text.take(800)}")
                 throw EwtException(msg)
             }
-            DebugLog.d("API", "<< $url\n${text.take(500)}")
+            // 成功响应：仅 Logcat 轻量输出（不写文件，避免大量并发写盘卡顿）
+            android.util.Log.d("EWT-API", "$url\n${text.take(400)}")
             return obj
         }
     }
@@ -310,6 +312,7 @@ object EwtEndpoints {
         ).unwrapArray("data")
 
     // ── 提交链路（EWT-TOOL-main paperFiller / opt.js 流程） ──────
+    // 注意：submitanswer 必须全小写（opt.js / EWT-TOOL-main 实测路径）
 
     /** 上报作答时长 / 空交卷（JS updateReport，解锁答案用） */
     suspend fun updateReport(paperId: String, reportId: String, platform: String, bizCode: String): JsonObject =
@@ -325,7 +328,7 @@ object EwtEndpoints {
             },
         )
 
-    /** 提交答案（选择题答案 / 非选择题自批项；body 对齐 opt.js：含 homeworkId） */
+    /** 提交答案（选择题答案 / 非选择题自批项；路径小写 submitanswer） */
     suspend fun submitAnswer(
         paperId: String,
         reportId: String,
@@ -335,7 +338,7 @@ object EwtEndpoints {
         homeworkId: String = "0",
     ): JsonObject =
         EwtApi.postJson(
-            "${EwtApi.BASE}/api/answerprod/web/answer/submitAnswer",
+            "${EwtApi.BASE}/api/answerprod/web/answer/submitanswer",
             buildJsonObject {
                 put("answers", answers)
                 put("assignPoints", true)
