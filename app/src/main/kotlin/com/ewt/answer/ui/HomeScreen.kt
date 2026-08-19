@@ -20,7 +20,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,12 +51,14 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.window.WindowDialog
 
 @Composable
 fun HomeScreen(
     userInfo: UserInfo?,
     paperCounts: Map<String, Int>,
     listState: LazyListState,
+    accuracy: Int,
     onOpenPaper: (Paper) -> Unit,
     onOpenLinkQuery: () -> Unit,
 ) {
@@ -65,15 +69,18 @@ fun HomeScreen(
     val dateFilter by vm.dateFilter.collectAsState()
     val subjectFilter by vm.subjectFilter.collectAsState()
     val searchQuery by vm.searchQuery.collectAsState()
+    val brushing by vm.brushing.collectAsState()
+
+    var brushConfirm by remember { mutableStateOf(false) }
+    var brushProgress by remember { mutableStateOf<String?>(null) }
+    var brushResult by remember { mutableStateOf<String?>(null) }
 
     val searchState = rememberTextFieldState()
-    // 外部状态 → 输入框（防止状态重置）
     LaunchedEffect(searchQuery) {
         if (searchState.text.toString() != searchQuery) {
             searchState.edit { replace(0, length, searchQuery) }
         }
     }
-    // 输入框 → 外部状态（miuix TextField 为 state 驱动，无 onValueChange）
     LaunchedEffect(searchState) {
         snapshotFlow { searchState.text.toString() }
             .distinctUntilChanged()
@@ -89,9 +96,8 @@ fun HomeScreen(
             TopAppBar(
                 title = "试卷列表",
                 subtitle = userInfo?.realName?.let { "你好，$it" } ?: "",
-                navigationIcon = {
-                    TextButton(text = "刷新", onClick = { vm.load(force = true) })
-                },
+                // 半透明毛玻璃感顶栏
+                color = MiuixTheme.colorScheme.surface.copy(alpha = 0.82f),
                 scrollBehavior = scrollBehavior,
             )
         },
@@ -121,7 +127,6 @@ fun HomeScreen(
                     if (fp.isEmpty()) null else g.copy(papers = fp)
                 } ?: emptyList()
             }
-            // 搜索过滤 + 按日期分组（默认按日期倒序展示）
             val searchLower = remember(searchQuery) { searchQuery.trim().lowercase() }
             val dateGroups = remember(filteredGroups, searchLower) {
                 filteredGroups.flatMap { it.papers }
@@ -142,12 +147,18 @@ fun HomeScreen(
                     start = 16.dp,
                     end = 16.dp,
                     top = padding.calculateTopPadding() + 8.dp,
-                    bottom = padding.calculateBottomPadding() + 24.dp,
+                    bottom = padding.calculateBottomPadding() + 96.dp,
                 ),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 item(key = "link") {
                     LinkQueryEntry(onClick = onOpenLinkQuery)
+                }
+                item(key = "brush_today") {
+                    BrushTodayEntry(
+                        brushing = brushing,
+                        onClick = { brushConfirm = true },
+                    )
                 }
                 item(key = "search") {
                     TextField(
@@ -252,6 +263,120 @@ fun HomeScreen(
             }
         }
     }
+
+    // 刷今日确认对话框
+    if (brushConfirm) {
+        WindowDialog(
+            show = true,
+            title = "一键刷今日试卷",
+            summary = "自动获取答案并提交交卷",
+            onDismissRequest = { brushConfirm = false },
+        ) {
+            Column {
+                Text(
+                    text = "将对今天的所有试卷自动执行：打开 → 获取全部答案 → 提交交卷自批。主观题按准确率 $accuracy% 分配得分。确定继续？",
+                    fontSize = 13.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(text = "取消", onClick = { brushConfirm = false })
+                    TextButton(text = "开始", onClick = {
+                        brushConfirm = false
+                        brushResult = null
+                        brushProgress = "准备中…"
+                        vm.brushToday(
+                            accuracy = accuracy,
+                            onProgress = { brushProgress = it },
+                            onDone = {
+                                brushProgress = null
+                                brushResult = it
+                            },
+                        )
+                    })
+                }
+            }
+        }
+    }
+    // 刷卷进度对话框
+    if (brushProgress != null && brushResult == null) {
+        WindowDialog(
+            show = true,
+            title = "刷卷中…",
+            onDismissRequest = {},
+        ) {
+            Column {
+                Text(
+                    text = brushProgress.orEmpty(),
+                    fontSize = 13.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                )
+            }
+        }
+    }
+    // 刷卷结果对话框
+    if (brushResult != null) {
+        WindowDialog(
+            show = true,
+            title = "刷卷完成",
+            onDismissRequest = { brushResult = null },
+        ) {
+            Column {
+                Text(
+                    text = brushResult.orEmpty(),
+                    fontSize = 13.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                ) {
+                    TextButton(text = "知道了", onClick = { brushResult = null })
+                }
+            }
+        }
+    }
+}
+
+/** 一键刷今日入口卡片 */
+@Composable
+private fun BrushTodayEntry(brushing: Boolean, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 13.dp),
+        onClick = onClick,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = if (brushing) "正在刷今日试卷…" else "一键刷今日试卷",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (brushing) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = "今日所有试卷：自动获取答案并提交交卷自批",
+                    fontSize = 12.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+            Icon(
+                imageVector = MiuixIcons.Basic.ArrowRight,
+                contentDescription = "刷今日试卷",
+                tint = MiuixTheme.colorScheme.primary,
+            )
+        }
+    }
 }
 
 /** 筛选行：标签 + 选项 chips（横向滚动） */
@@ -326,7 +451,7 @@ private fun PaperRow(
                     color = MiuixTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.height(4.dp))
-                // 题数：优先使用打开试卷后回传的真实题数，其次扫描字段
+                // 课程信息（作业名） · 学科 · 题数
                 val countText = count?.takeIf { it > 0 }?.let { "共 $it 题" }
                     ?: paper.questionCount.takeIf { it != "?" }?.let { "共 $it 题" }
                     ?: ""
