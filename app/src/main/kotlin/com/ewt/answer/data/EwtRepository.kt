@@ -81,9 +81,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     /**
      * 扫描单个作业下所有可答题任务（试卷 / 课后习题）。
-     * paperId 提取优先级：
-     *   1) contentUrl 中的 paperId= 参数（试卷）
-     *   2) 非视频类任务的 contentId（课后习题 id；视频课的 contentId 是课程/课时 id，必须跳过）
      */
     suspend fun scanHomeworkPapers(schoolId: String, homework: HomeworkItem): List<Paper> {
         val papers = mutableListOf<Paper>()
@@ -104,7 +101,11 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                         val typeName = task.str("contentTypeName").orEmpty()
                         val paperId = extractPaperId(task)
                         if (paperId == null) {
-                            DebugLog.d("Scan", "非答题任务跳过: type=$typeName title=${task.str("title")}")
+                            // 记录完整任务 JSON，便于定位课后习题的真实来源字段
+                            DebugLog.d(
+                                "Scan",
+                                "跳过: type=$typeName title=${task.str("title")}\n${task.toString().take(600)}",
+                            )
                             continue
                         }
                         val count = task.str("questionCount")
@@ -163,22 +164,21 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     /**
      * 提取任务 paperId：
-     * 1) contentUrl 的 paperId= 参数（试卷/带链接的习题）
-     * 2) 非视频类任务回退 contentId（课后习题 id）
-     * 3) 视频课（play-videos / courseId / 课程讲）返回 null，防止把课程 id 当 paperId 导致答案串台
+     * 1) 视频课类任务（课程讲/视频/微课、play-videos、courseId）→ null（contentId 是课程 id）
+     * 2) 在整个任务 JSON（含 contentUrl / resourceUrlVO 等嵌套字段）中搜索 paperId=
+     * 3) 兜底 contentId（课后习题等非视频任务）
      */
     private fun extractPaperId(task: JsonObject): String? {
         val typeName = task.str("contentTypeName").orEmpty()
-        // 视频课类任务：contentId 是课程/课时 id，必须跳过
-        if (typeName.contains("课程讲") || typeName.contains("视频") || typeName.contains("微课")) {
-            return null
-        }
         val url = task.str("contentUrl").orEmpty()
-        Regex("paperId=([^&]+)").find(url)?.let { return it.groupValues[1] }
-        // URL 是视频播放页也跳过
-        if (url.contains("play-videos") || url.contains("courseId=")) {
+        // 视频课类任务：contentId 是课程/课时 id，必须跳过
+        if (typeName.contains("课程讲") || typeName.contains("视频") || typeName.contains("微课") ||
+            url.contains("play-videos") || url.contains("courseId=")
+        ) {
             return null
         }
+        // 整个任务 JSON 中搜索 paperId=（覆盖 contentUrl / resourceUrlVO / previewUrl 等）
+        Regex("""paperId[=:]\s*"?(\d+)""").find(task.toString())?.let { return it.groupValues[1] }
         // 课后习题等：使用 contentId
         return task.str("contentId")
     }
