@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.RenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -74,6 +75,10 @@ sealed class Screen {
 /** 底部 Tab 索引 */
 private const val TAB_PAPERS = 0
 private const val TAB_ABOUT = 1
+
+/** Android 12+ 是否支持硬件加速 RenderEffect 模糊 */
+private val blurSupported: Boolean =
+    android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
 
 @Composable
 fun AppRoot() {
@@ -210,7 +215,7 @@ fun AppRoot() {
             }
         }
 
-        // ── 双层渲染：背景=上一页（Main 常驻防瞬移），顶层=当前页（手势跟随） ──
+        // ── 双层渲染：背景=上一页（Main 常驻防瞬移），顶层=当前页（手势跟随+动态模糊） ──
         Box(Modifier.fillMaxSize()) {
             // 背景层：Main 常驻组合（alpha 控制），其他 prev 手势时组合
             if (previous != null && (previous == Screen.Main || showPrevLayer)) {
@@ -253,7 +258,7 @@ fun AppRoot() {
                     )
                 }
             }
-            // 顶层：当前页（手势跟随）
+            // 顶层：当前页（手势跟随 + 动态模糊 + 缩放 + 圆角）
             Box(
                 Modifier
                     .fillMaxSize()
@@ -265,6 +270,13 @@ fun AppRoot() {
                         if (p > 0f) {
                             shape = RoundedCornerShape(28.dp.toPx() * p)
                             clip = true
+                            // 动态模糊：blurRadius = progress × maxBlur（Android 12+ RenderEffect 硬件加速）
+                            // 返回取消时随 progress 归零自动恢复清晰
+                            if (blurSupported) {
+                                renderEffect = RenderEffect.createBlurEffect(
+                                    p * 10f, p * 10f, android.graphics.Shader.TileMode.CLAMP,
+                                )
+                            }
                         }
                     },
             ) {
@@ -466,13 +478,13 @@ private fun MainLayer(
                 )
             }
         }
-        // 悬浮胶囊底栏
+        // 悬浮胶囊底栏（半透明 Surface 层级，模糊成本高故用高不透明 Surface）
         Box(
             Modifier
                 .align(Alignment.BottomCenter)
                 .padding(horizontal = 20.dp, vertical = 10.dp)
                 .shadow(8.dp, RoundedCornerShape(28.dp))
-                .background(MiuixTheme.colorScheme.surface.copy(alpha = 0.94f), RoundedCornerShape(28.dp))
+                .background(MiuixTheme.colorScheme.surface.copy(alpha = 0.96f), RoundedCornerShape(28.dp))
                 .fillMaxWidth()
                 .height(52.dp),
         ) {
