@@ -11,10 +11,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -95,7 +97,7 @@ fun HomeScreen(
     var brushResult by remember { mutableStateOf<String?>(null) }
 
     // 刷今日目标正确率区间（提交前弹窗输入）
-    val brushRateState = rememberTextFieldState(initial = "80-90")
+    val brushRateState = remember { TextFieldState("80-90") }
 
     // 顶栏独立 backdrop：只捕获 Scaffold 内容区（列表），不含顶栏自身 ——
     // 若采样含顶栏的整页层，RenderNode 成环，hwui prepareTreeImpl 无限递归（原生崩溃）
