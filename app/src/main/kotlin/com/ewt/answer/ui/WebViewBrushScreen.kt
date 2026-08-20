@@ -196,7 +196,7 @@ private class BrushBridge(
 }
 
 /** 自动刷注入脚本（精简自 EWT360-Helper：连播/倍速/过检/锁进度/跳题 + 进度回传） */
-private const val BRUSH_JS = """
+private val BRUSH_JS = """
 (function(){
   if (window.__ewtBrushOn !== undefined) { window.__ewtBrushOn = true; return; }
   window.__ewtBrushOn = true;
