@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.getTop
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
@@ -52,6 +51,7 @@ fun rememberCollapseProgress(listState: LazyListState, collapseDistancePx: Float
  * 液态玻璃滚动收缩顶栏（试卷 / 课程 / 设置 三页共用）：
  *
  * - LiquidGlass 材质与底部导航同语言：blur 10dp + surface 62%，完全保留
+ * - 高度回归统一前的 miuix TopAppBar 尺寸（展开 92dp / 收缩 52dp），仅保留上滑收缩动效
  * - 顶栏背景覆盖状态栏区域（Edge-to-Edge 下从屏幕顶部渲染，玻璃延伸到状态栏后面）
  * - 读取状态栏高度：文字整体下移半个状态栏高度，使标题在状态栏下方的内容区视觉上下居中
  * - 大标题展开态左侧 16dp + 副标题下方左对齐 → 滚动时标题缩放并水平居中、副标题淡出
@@ -66,8 +66,8 @@ fun CollapsingHeaderBar(
     glassSurface: Color,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    // 展开/收缩高度都更大（含状态栏区域），标题在内容区垂直居中
-    val headerHeight = lerp(128.dp, 72.dp, progress)
+    // 回归统一前 miuix TopAppBar 尺寸：展开 92dp（含状态栏区域）/ 收缩 52dp
+    val headerHeight = lerp(92.dp, 52.dp, progress)
     val titleSize = lerp(26.sp, 17.sp, progress)
     val density = LocalDensity.current
     // 状态栏高度（px）：文字整体下移其一半，视觉上下居中于状态栏下方的内容区
