@@ -31,18 +31,17 @@ data class GlobalConf(
 /**
  * 视频课（刷课）API：播放上报协议。
  * 源自 ewt360-brush（spark_ewt）逆向：BFE 播放上报 + HMAC-SHA1 签名（复刻 MSTPlayer makeSecretKey）。
- * bizCode: 1013=普通视频（web），2013=app 端。
  *
- * ⚠️ 699101「环境异常」修复（2026-08-20，三轮，termux 抓包逐字段对齐）：
- *  ① body 字段对齐：action=1 speed=1、begin_time 按 action 区分、action=3 收尾。
- *  ② 传输层对齐 httpx：禁 HTTP/2（强制 HTTP/1.1）、Accept 头、Content-Type 纯 application/json。
- *  ③ UA 对齐 termux 成功样本：python-httpx/0.28.1。
- *     关键：BFE 风控抓「伪装浏览器的工具」——浏览器 UA + 无浏览器 cookie/JS 特征 = 699101；
- *     诚实脚本 UA（python-httpx）经签名校验反而放行（termux 实测）。
+ * ⚠️ 699101「环境异常」最终修复（2026-08-20，termux 逐字段 + 官方 app 抓包确认）：
+ *  根因：app 用 web 协议(1013) + Android Conscrypt TLS = 「Android 设备用 web 协议」异常组合，被 BFE 打标。
+ *  修复：改用 app 端协议(2013) —— monitor/app/collect/batch + videoBizCode=2013（官方 app 同款，
+ *        Conscrypt + 2013 是正常组合）。body 结构 web/app 通用（termux 改 2013 后原样 body 实测 code 200，
+ *        进度正常推进），签名算法不变。UA 用 python-httpx（诚实脚本 UA，BFE 不拦）。
  */
 object CourseApi {
     const val BFE = "https://bfe.ewt360.com"
-    const val VIDEO_BIZ = "1013"
+    // 2013 = app 端协议（官方 app 同款）。web 协议 1013 + Android Conscrypt = 699101 环境异常
+    const val VIDEO_BIZ = "2013"
     const val SCHOOL_VIDEO_BIZ = "1014"
     const val SDK_VERSION = "3.0.37"
     const val SN = "ewt_web_video_detail"
@@ -186,7 +185,7 @@ object CourseApi {
     /**
      * 单条播放上报。返回 OK / FAIL / WAF。
      * action: 1=play start, 2=进度上报(竞态爆发), 3=完成
-     * 字段与 ewt_brush_v2（spark_ewt 协议）逐字段对齐；传输层对齐 httpx（h1.1 + Accept + CT + python-httpx UA）。
+     * 走 app 端协议（2013，官方 app 同款），body/签名与 web 通用（termux 实测 code 200）。
      */
     suspend fun reportBatch(
         conf: GlobalConf,
@@ -264,7 +263,8 @@ object CourseApi {
             put("_", System.currentTimeMillis())
         }
 
-        val url = "$BFE/monitor/web/collect/batch" +
+        // app 端协议：monitor/app/collect/batch（官方 app 同款路径）
+        val url = "$BFE/monitor/app/collect/batch" +
             "?TrVideoBizCode=$bizCode&TrFallback=0&TrUserId=$userId&TrLessonId=$lessonId" +
             "&TrUuId=$uuid&sdkVersion=$SDK_VERSION&_=${System.currentTimeMillis()}"
         val request = Request.Builder()
