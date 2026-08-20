@@ -487,7 +487,7 @@ private fun MainLayer(
     }
 }
 
-/** 悬浮胶囊底栏：backdrop 离屏层模糊 + 半透明 Surface + 清晰文字 */
+/** 悬浮胶囊底栏：backdrop 离屏层模糊 + 半透明 Surface + 清晰文字（参考 miuix FloatingNavigationBar） */
 @Composable
 private fun BlurredTabBar(
     tab: Int,
@@ -498,19 +498,21 @@ private fun BlurredTabBar(
     val surfaceColor = MiuixTheme.colorScheme.surface
     val density = LocalDensity.current
     val radiusPx = with(density) { 14.dp.toPx() }
+    val cornerPx = with(density) { 50.dp.toPx() }
 
     Box(
         modifier
-            .padding(horizontal = 20.dp, vertical = 10.dp)
-            .shadow(8.dp, RoundedCornerShape(28.dp))
+            .padding(horizontal = 36.dp, vertical = 10.dp)
+            .shadow(8.dp, RoundedCornerShape(50.dp))
             .fillMaxWidth()
             .height(52.dp)
-            .clip(RoundedCornerShape(28.dp))
+            .clip(RoundedCornerShape(50.dp))
             .drawBackdrop(
                 backdrop = backdrop,
-                shape = { RoundedCornerShape(28.dp) },
+                shape = { RoundedCornerShape(50.dp) },
                 effects = { blur(radiusPx) },
-                onDrawSurface = { drawRect(surfaceColor.copy(alpha = 0.92f)) },
+                // 半透明 Surface（让模糊透出，参考 miuix 0.4-0.5 级别）
+                onDrawSurface = { drawRect(surfaceColor.copy(alpha = 0.5f)) },
             ),
     ) {
         Row(Modifier.fillMaxSize()) {
