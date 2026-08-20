@@ -52,7 +52,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * 加载 web.ewt360.com 真实浏览器环境（复用登录 Cookie），用户进入课程视频页后点「开始自动刷」，
  * 注入 JS 自动连播（85% 切换 + 2 倍速 + 自动过检 + 锁进度条 + 跳题），
  * 并通过 JS↔原生桥实时回传课时标题/进度/已刷数 → 原生可视化进度卡。
- * 真实 Chromium 环境上报 → 无 699101/699102 风控。
+ * 顶部显示当前页面 URL（用于学习课时链接格式，后续支持原生点击直达）。
  */
 @Composable
 fun WebViewBrushScreen(
@@ -65,6 +65,8 @@ fun WebViewBrushScreen(
     var lessonTitle by remember { mutableStateOf("未开始") }
     var progress by remember { mutableIntStateOf(0) }
     var switchedCount by remember { mutableIntStateOf(0) }
+    // 当前页面 URL（学习课时链接格式）
+    var currentUrl by remember { mutableStateOf("") }
 
     Scaffold(
         topBar = {
@@ -115,6 +117,16 @@ fun WebViewBrushScreen(
                         fontSize = 12.sp,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
+                    if (currentUrl.isNotBlank()) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = currentUrl,
+                            fontSize = 10.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
 
@@ -129,6 +141,7 @@ fun WebViewBrushScreen(
                                 progress = pct
                                 switchedCount = switched
                             },
+                            onUrl = { url -> currentUrl = url },
                         )
                     },
                     modifier = Modifier.fillMaxSize(),
@@ -269,6 +282,7 @@ private const val BRUSH_JS = """
 private fun createBrushWebView(
     context: Context,
     onProgress: (String, Int, Int) -> Unit,
+    onUrl: (String) -> Unit,
 ): WebView {
     val wv = WebView(context)
     wv.settings.javaScriptEnabled = true
@@ -283,6 +297,7 @@ private fun createBrushWebView(
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
             // 页面跳转后重置刷课状态，避免旧页面定时器失效
             view?.evaluateJavascript("window.__ewtBrushOn = false;", null)
+            if (url != null) onUrl(url)
         }
 
         override fun onPageFinished(view: WebView?, url: String?) {
@@ -291,6 +306,7 @@ private fun createBrushWebView(
                 "try{var v=document.querySelector('video');if(v){v.muted=true;v.playbackRate=2;}}catch(e){} window.__ewtBrushOn = true;",
                 null,
             )
+            if (url != null) onUrl(url)
         }
 
         @Suppress("DEPRECATION")
