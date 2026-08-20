@@ -63,8 +63,8 @@ fun CollapsingHeaderBar(
     glassSurface: Color,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    // 展开态含状态栏区域，收缩态紧凑；标题垂直居中保证上下等边距
-    val headerHeight = lerp(96.dp, 54.dp, progress)
+    // 展开态较高（含状态栏），收缩态紧凑；标题垂直居中保证上下等边距
+    val headerHeight = lerp(116.dp, 64.dp, progress)
     val titleSize = lerp(26.sp, 17.sp, progress)
     val density = LocalDensity.current
 
@@ -85,7 +85,8 @@ fun CollapsingHeaderBar(
         val containerW = with(density) { maxWidth.toPx() }
         val offset16Px = with(density) { 16.dp.toPx() }
         val offset8Px = with(density) { 8.dp.toPx() }
-        val gapPx = with(density) { 4.dp.toPx() }
+        // 副标题与主标题间距：展开态 10dp，滚动时收缩到 0
+        val gapPx = with(density) { 10.dp.toPx() }
         var titleW by remember { mutableIntStateOf(0) }
         var titleH by remember { mutableIntStateOf(0) }
 
@@ -107,7 +108,7 @@ fun CollapsingHeaderBar(
                 },
         )
 
-        // 副标题：初始与主标题左对齐（左侧 16dp），随滚动淡出 + 上移 + 轻微缩小（不占位）
+        // 副标题：初始与主标题左对齐且间距 10dp，随滚动淡出 + 上移 + 轻微缩小（不占位）
         if (subtitle != null) {
             var subW by remember { mutableIntStateOf(0) }
             Text(
@@ -119,7 +120,6 @@ fun CollapsingHeaderBar(
                     .align(Alignment.Center)
                     .onSizeChanged { subW = it.width }
                     .graphicsLayer {
-                        // 水平与主标题同规则左对齐；垂直在标题下方
                         translationX = -(containerW / 2f - offset16Px - subW / 2f) * (1f - progress)
                         translationY = titleH / 2f + gapPx * (1f - progress) - offset8Px * progress
                         alpha = 1f - progress

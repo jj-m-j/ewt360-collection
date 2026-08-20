@@ -82,7 +82,6 @@ import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.NumberPicker
-import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
@@ -107,7 +106,7 @@ private val FilterListIcon: ImageVector by lazy {
     ).build()
 }
 
-/** 刷新图标（material refresh，静态，不旋转） */
+/** 刷新图标（material refresh，静态） */
 private val RefreshIcon: ImageVector by lazy {
     ImageVector.Builder(
         name = "Refresh",
@@ -219,119 +218,112 @@ fun HomeScreen(
                 .fillMaxSize()
                 .layerBackdrop(topBarBackdrop),
         ) {
-            // 下拉刷新：指示器贴近内容区顶部（全部任务标题上方居中），顶栏已覆盖状态栏故不贴状态栏
-            PullToRefresh(
-                isRefreshing = refreshing,
-                onRefresh = { vm.load(force = true) },
-                contentPadding = PaddingValues(top = 6.dp),
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = padding.calculateTopPadding() + 8.dp,
+                    bottom = padding.calculateBottomPadding() + 80.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        end = 16.dp,
-                        top = padding.calculateTopPadding() + 8.dp,
-                        bottom = padding.calculateBottomPadding() + 80.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    item(key = "toolbar") {
-                        RefreshRow(
-                            refreshing = refreshing,
+                item(key = "toolbar") {
+                    RefreshRow(
+                        refreshing = refreshing,
+                        dateFilter = dateFilter,
+                        subjectFilter = subjectFilter,
+                        onRefresh = { vm.load(force = true) },
+                    )
+                }
+                item(key = "search") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextField(
+                            state = searchState,
+                            label = "搜索试卷 / 课后习题",
+                            useLabelAsPlaceholder = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(2.dp))
+                        FilterRow(
                             dateFilter = dateFilter,
                             subjectFilter = subjectFilter,
-                            onRefresh = { vm.load(force = true) },
+                            dates = dates,
+                            subjects = subjects,
+                            onDateSelect = { vm.setDateFilter(it) },
+                            onSubjectSelect = { vm.setSubjectFilter(it) },
+                            onClear = {
+                                vm.setDateFilter(null)
+                                vm.setSubjectFilter(null)
+                            },
                         )
                     }
-                    item(key = "search") {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            TextField(
-                                state = searchState,
-                                label = "搜索试卷 / 课后习题",
-                                useLabelAsPlaceholder = true,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Spacer(Modifier.width(2.dp))
-                            FilterRow(
-                                dateFilter = dateFilter,
-                                subjectFilter = subjectFilter,
-                                dates = dates,
-                                subjects = subjects,
-                                onDateSelect = { vm.setDateFilter(it) },
-                                onSubjectSelect = { vm.setSubjectFilter(it) },
-                                onClear = {
-                                    vm.setDateFilter(null)
-                                    vm.setSubjectFilter(null)
-                                },
-                            )
-                        }
-                    }
-                    item(key = "quick_title") {
-                        SmallTitle(text = "快捷操作")
-                    }
-                    item(key = "link") {
-                        LinkQueryEntry(onClick = onOpenLinkQuery)
-                    }
-                    item(key = "brush_today") {
-                        BrushTodayEntry(
-                            brushing = brushing,
-                            progress = brushProgress,
-                            onClick = { showBrushDialog = true },
-                        )
-                    }
+                }
+                item(key = "quick_title") {
+                    SmallTitle(text = "快捷操作")
+                }
+                item(key = "link") {
+                    LinkQueryEntry(onClick = onOpenLinkQuery)
+                }
+                item(key = "brush_today") {
+                    BrushTodayEntry(
+                        brushing = brushing,
+                        progress = brushProgress,
+                        onClick = { showBrushDialog = true },
+                    )
+                }
 
-                    when (val state = uiState) {
-                        HomeViewModel.UiState.Loading -> {
-                            item(key = "scan_status") {
-                                ScanStatusRow(statusText.ifBlank { "正在扫描作业…" })
+                when (val state = uiState) {
+                    HomeViewModel.UiState.Loading -> {
+                        item(key = "scan_status") {
+                            ScanStatusRow(statusText.ifBlank { "正在扫描作业…" })
+                        }
+                    }
+                    HomeViewModel.UiState.Empty -> {
+                        item(key = "empty") {
+                            EmptyHint("暂未找到可查询的任务\n请确认作业已布置试卷，或使用粘贴链接查询")
+                        }
+                    }
+                    is HomeViewModel.UiState.Error -> {
+                        item(key = "error") {
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 40.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text(
+                                    state.message,
+                                    fontSize = 14.sp,
+                                    color = MiuixTheme.colorScheme.error,
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                TextButton(text = "重试", onClick = { vm.load(force = true) })
                             }
                         }
-                        HomeViewModel.UiState.Empty -> {
-                            item(key = "empty") {
-                                EmptyHint("暂未找到可查询的任务\n请确认作业已布置试卷，或使用粘贴链接查询")
+                    }
+                    is HomeViewModel.UiState.Ready -> {
+                        if (dateGroups.isEmpty()) {
+                            item(key = "filtered_empty") {
+                                EmptyHint("当前筛选 / 搜索条件下没有任务")
                             }
-                        }
-                        is HomeViewModel.UiState.Error -> {
-                            item(key = "error") {
-                                Column(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 40.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                ) {
-                                    Text(
-                                        state.message,
-                                        fontSize = 14.sp,
-                                        color = MiuixTheme.colorScheme.error,
+                        } else {
+                            dateGroups.forEach { (date, papers) ->
+                                item(key = "date_$date") {
+                                    SmallTitle(
+                                        text = if (date == "其他") "未分类" else date,
                                     )
-                                    Spacer(Modifier.height(12.dp))
-                                    TextButton(text = "重试", onClick = { vm.load(force = true) })
                                 }
-                            }
-                        }
-                        is HomeViewModel.UiState.Ready -> {
-                            if (dateGroups.isEmpty()) {
-                                item(key = "filtered_empty") {
-                                    EmptyHint("当前筛选 / 搜索条件下没有任务")
-                                }
-                            } else {
-                                dateGroups.forEach { (date, papers) ->
-                                    item(key = "date_$date") {
-                                        SmallTitle(
-                                            text = if (date == "其他") "未分类" else date,
-                                        )
-                                    }
-                                    items(papers, key = { it.paperId }) { paper ->
-                                        PaperRow(
-                                            paper = paper,
-                                            count = paperCounts[paper.paperId],
-                                            onClick = { onOpenPaper(paper) },
-                                        )
-                                    }
+                                items(papers, key = { it.paperId }) { paper ->
+                                    PaperRow(
+                                        paper = paper,
+                                        count = paperCounts[paper.paperId],
+                                        onClick = { onOpenPaper(paper) },
+                                    )
                                 }
                             }
                         }
@@ -387,8 +379,6 @@ fun HomeScreen(
     }
 }
 
-// ── 任务工具区（全部任务 + 刷新） ────────────────────────────────
-
 @Composable
 private fun RefreshRow(
     refreshing: Boolean,
@@ -421,8 +411,6 @@ private fun RefreshRow(
         }
     }
 }
-
-// ── 搜索 / 筛选 ────────────────────────────────────────────────
 
 @Composable
 private fun FilterRow(
@@ -743,8 +731,6 @@ private fun FilterOptionRow(label: String, value: String, onClick: () -> Unit) {
         }
     }
 }
-
-// ── 快捷操作 ──────────────────────────────────────────────────
 
 @Composable
 private fun BrushTodayEntry(brushing: Boolean, progress: String, onClick: () -> Unit) {
