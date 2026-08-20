@@ -32,11 +32,13 @@ data class GlobalConf(
  * 视频课（刷课）API：播放上报协议。
  * 源自 ewt360-brush（spark_ewt）逆向：BFE 播放上报 + HMAC-SHA1 签名（复刻 MSTPlayer makeSecretKey）。
  *
- * ⚠️ 699101「环境异常」最终修复（2026-08-20，termux 逐字段 + 官方 app 抓包确认）：
- *  根因：app 用 web 协议(1013) + Android Conscrypt TLS = 「Android 设备用 web 协议」异常组合，被 BFE 打标。
- *  修复：改用 app 端协议(2013) —— monitor/app/collect/batch + videoBizCode=2013（官方 app 同款，
- *        Conscrypt + 2013 是正常组合）。body 结构 web/app 通用（termux 改 2013 后原样 body 实测 code 200，
- *        进度正常推进），签名算法不变。UA 用 python-httpx（诚实脚本 UA，BFE 不拦）。
+ * ⚠️ 699101「环境异常」最终修复（2026-08-20，termux 抓包 + 官方 app HookNext 抓包确认）：
+ *  ① 协议改用 app 端 2013：monitor/app/collect/batch + videoBizCode=2013（官方 app 同款）
+ *  ② body 身份对齐 Android：os=Android、去掉 browser/browser_ver（web 身份 Windows/Edge + Conscrypt
+ *     Android 设备特征 = 身份不一致 → 699101；官方 app Conscrypt+Android 一致、termux OpenSSL+Windows 自洽）
+ *  ③ URL query 完全对齐官方 app：TrLessonId + x-bfe-session-id(in URL) + TrVideoBizCode + TrUuId(纯8位hex)
+ *     + TrFallback + TrUserId（去掉 sdkVersion/_ 参数）
+ *  ④ 传输层：HTTP/1.1、Accept: */*、Content-Type 纯 application/json、UA=python-httpx（诚实脚本 UA）
  */
 object CourseApi {
     const val BFE = "https://bfe.ewt360.com"
@@ -185,7 +187,7 @@ object CourseApi {
     /**
      * 单条播放上报。返回 OK / FAIL / WAF。
      * action: 1=play start, 2=进度上报(竞态爆发), 3=完成
-     * 走 app 端协议（2013，官方 app 同款），body/签名与 web 通用（termux 实测 code 200）。
+     * 走 app 端协议（2013，官方 app 同款），body 身份对齐 Android。
      */
     suspend fun reportBatch(
         conf: GlobalConf,
@@ -241,14 +243,9 @@ object CourseApi {
                 buildJsonObject {
                     put("userid", userId)
                     put("ip", conf.clientIp)
-                    put("os", "Windows")
+                    put("os", "Android")
                     put("resolution", "1920*1080")
                     put("mstid", token)
-                    put("browser", "Edge")
-                    put(
-                        "browser_ver",
-                        "5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 Edg/116.0.1938.76",
-                    )
                     put("playerType", 1)
                     put("sdkVersion", SDK_VERSION)
                     put("videoBizCode", bizCode)
@@ -263,18 +260,22 @@ object CourseApi {
             put("_", System.currentTimeMillis())
         }
 
-        // app 端协议：monitor/app/collect/batch（官方 app 同款路径）
+        // app 端协议：query 完全对齐官方 app（TrLessonId + x-bfe-session-id + TrVideoBizCode + TrUuId 纯8位 + TrFallback + TrUserId）
+        val uuid8 = uuid.substringBefore("_")
         val url = "$BFE/monitor/app/collect/batch" +
-            "?TrVideoBizCode=$bizCode&TrFallback=0&TrUserId=$userId&TrLessonId=$lessonId" +
-            "&TrUuId=$uuid&sdkVersion=$SDK_VERSION&_=${System.currentTimeMillis()}"
+            "?TrLessonId=$lessonId" +
+            "&x-bfe-session-id=${conf.sessionId}" +
+            "&TrVideoBizCode=$bizCode" +
+            "&TrUuId=$uuid8" +
+            "&TrFallback=0" +
+            "&TrUserId=$userId"
         val request = Request.Builder()
             .url(url)
             .header("token", token)
             .header("x-bfe-session-id", conf.sessionId)
             .header("Accept", "*/*")
             .header("Content-Type", "application/json")
-            // UA 对齐 termux 成功样本（python-httpx）：BFE 风控抓「伪装浏览器的工具」，
-            // 浏览器 UA + 无浏览器特征 = 699101；诚实脚本 UA 经签名校验放行
+            // UA 对齐 termux 成功样本（python-httpx）：BFE 风控抓「伪装浏览器的工具」
             .header("User-Agent", "python-httpx/0.28.1")
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
