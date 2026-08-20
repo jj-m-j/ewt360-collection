@@ -7,20 +7,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
 import com.ewt.answer.data.HtmlCleaner
-import okhttp3.Headers
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * 渲染解析 HTML：文本 + 公式图 / 插图分段展示。
- * 图片仅允许 file.ewt360.com 域名（与油猴脚本一致），并补齐 UA / Referer 请求头避免 403。
+ * 图片走全局 ImageLoader（EwtApplication 已配 UA/Referer 头），并统一 https + 转义清理。
  */
 @Composable
 fun RichHtmlText(
@@ -62,26 +59,12 @@ fun AttachmentImageList(urls: List<String>, modifier: Modifier = Modifier) {
 }
 
 /**
- * EWT 图片：统一 https + 转义清理 + UA/Referer 请求头（部分图床无 Referer 会 403，导致图片无法显示）。
+ * EWT 图片：https 规范化 + 全局 ImageLoader 头（UA/Referer）加载。
  */
 @Composable
 private fun EwtImage(url: String) {
-    val context = LocalContext.current
-    val model: ImageRequest = remember(url) {
-        val u = normalizeEwtImageUrl(url)
-        ImageRequest.Builder(context)
-            .data(u)
-            .headers(
-                Headers.Builder()
-                    .add("User-Agent", "Mozilla/5.0")
-                    .add("Referer", "https://web.ewt360.com/mystudy/")
-                    .add("Origin", "https://web.ewt360.com")
-                    .build(),
-            )
-            .build()
-    }
     AsyncImage(
-        model = model,
+        model = normalizeEwtImageUrl(url),
         contentDescription = null,
         modifier = Modifier
             .fillMaxWidth()
