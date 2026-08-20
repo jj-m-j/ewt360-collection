@@ -40,7 +40,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
@@ -48,11 +47,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.ewt.answer.data.AppContainer
 import com.ewt.answer.data.EwtRepository
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.UserInfo
+import com.kyant.backdrop.Backdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
@@ -422,7 +425,7 @@ private fun RenderScreen(
     }
 }
 
-/** 主层：悬浮底部 Tab（试卷 / 关于） */
+/** 主层：悬浮底部 Tab（试卷 / 关于），Liquid Glass 毛玻璃背景 */
 @Composable
 private fun MainLayer(
     userInfo: UserInfo?,
@@ -439,12 +442,16 @@ private fun MainLayer(
     onOpenDebug: () -> Unit,
     onLogout: () -> Unit,
 ) {
+    // 捕获 Tab 内容（不含底栏），供底栏模糊
+    val tabsBackdrop = rememberLayerBackdrop()
+
     Box(Modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = tab,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = 74.dp),
+                .padding(bottom = 74.dp)
+                .layerBackdrop(tabsBackdrop),
             transitionSpec = {
                 fadeIn(tween(180)).togetherWith(fadeOut(tween(120)))
             },
@@ -470,26 +477,27 @@ private fun MainLayer(
                 )
             }
         }
-        // 悬浮胶囊底栏（QmBlurView 实时模糊 + 半透明 Surface + 清晰文字）
+        // 悬浮胶囊底栏（Liquid Glass 实时模糊 + 半透明 Surface + 清晰文字）
         BlurredTabBar(
             tab = tab,
             onTabSelect = onTabSelect,
+            backdrop = tabsBackdrop,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
 }
 
-/** 悬浮胶囊底栏：QmBlurView 实时高斯模糊 + 半透明 Surface + 清晰文字 */
+/** 悬浮胶囊底栏：backdrop 离屏层模糊 + 半透明 Surface + 清晰文字 */
 @Composable
 private fun BlurredTabBar(
     tab: Int,
     onTabSelect: (Int) -> Unit,
+    backdrop: Backdrop,
     modifier: Modifier = Modifier,
 ) {
     val surfaceColor = MiuixTheme.colorScheme.surface
     val density = LocalDensity.current
     val radiusPx = with(density) { 14.dp.toPx() }
-    val cornerPx = with(density) { 28.dp.toPx() }
 
     Box(
         modifier
@@ -497,23 +505,14 @@ private fun BlurredTabBar(
             .shadow(8.dp, RoundedCornerShape(28.dp))
             .fillMaxWidth()
             .height(52.dp)
-            .clip(RoundedCornerShape(28.dp)),
+            .clip(RoundedCornerShape(28.dp))
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { RoundedCornerShape(28.dp) },
+                effects = { blur(radiusPx) },
+                onDrawSurface = { drawRect(surfaceColor.copy(alpha = 0.92f)) },
+            ),
     ) {
-        // QmBlurView：Native C++ 实时模糊，自动捕获 DecorView 内容
-        AndroidView(
-            factory = { ctx ->
-                com.qmdeve.blurview.widget.BlurView(ctx, null).apply {
-                    setBlurRadius(radiusPx)
-                    setOverlayColor(surfaceColor.copy(alpha = 0.92f).toArgb())
-                    setCornerRadius(cornerPx)
-                }
-            },
-            update = { v ->
-                v.setBlurRadius(radiusPx)
-                v.setOverlayColor(surfaceColor.copy(alpha = 0.92f).toArgb())
-            },
-            modifier = Modifier.fillMaxSize(),
-        )
         Row(Modifier.fillMaxSize()) {
             TabItem(
                 text = "试卷",
