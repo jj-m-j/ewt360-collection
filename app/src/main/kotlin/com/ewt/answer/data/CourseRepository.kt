@@ -39,13 +39,13 @@ data class BrushResult(val success: Boolean, val message: String)
  * 视频课刷课引擎（原生实现，协议源自 ewt360-brush / spark_ewt）：
  * 扫描视频课时 → 播放上报（BFE，HMAC-SHA1 签名）→ 看课检测置过。
  *
- * ⚠️ 竞态爆发（12 路并发）已被服务端风控识别（699101 环境异常，Termux 实测 burst=1 单发正常）。
- * 并发路数由设置页控制（CourseRepository.burstSize，默认 1 路最稳）。
+ * ⚠️ 699101 修复（2026-08-20）：上报字段已与 ewt_brush_v2 对齐（begin_time/speed/UA/action=3），
+ * 并发路数由设置页控制（CourseRepository.burstSize，默认 1 路最稳，最高 12 路竞态爆发）。
  */
 class CourseRepository {
 
     companion object {
-        /** 刷课并发路数（设置页可调，1=单发最稳） */
+        /** 刷课并发路数（设置页可调，1=单发最稳，最高 12 路竞态爆发） */
         @Volatile
         var burstSize: Int = 1
     }
@@ -203,7 +203,7 @@ class CourseRepository {
 
     // ── 刷课核心 ──────────────────────────────────────────────
 
-    /** 按 burstSize 发起一轮上报（1=单发最稳，>1=小并发加速，可被风控） */
+    /** 按 burstSize 发起一轮上报（1=单发最稳，>1=竞态爆发加速，最高 12 路） */
     private suspend fun fire(
         conf: GlobalConf,
         token: String,
@@ -212,21 +212,22 @@ class CourseRepository {
         bizCode: String,
         videoType: Int,
     ): Boolean {
-        val n = CourseRepository.burstSize.coerceIn(1, 8)
+        val n = CourseRepository.burstSize.coerceIn(1, 12)
         if (n <= 1) {
-            val uuid = "${java.util.UUID.randomUUID().toString().substring(0, 8)}_1"
+            // uuid 后缀与脚本 _concurrent_burst 一致（{8hex}_{i}，单发 i=0）
+            val uuid = "${java.util.UUID.randomUUID().toString().substring(0, 8)}_0"
             val r = runCatching {
                 CourseApi.reportBatch(
                     conf = conf, token = token, lessonId = lesson.lessonId,
                     courseId = lesson.courseId, schoolId = schoolId,
                     bizCode = bizCode, videoType = videoType,
                     action = 2, stayTimeMs = 10_000,
-                    pointId = 200, pointNum = 20, beginOffsetMs = 60_000, uuid = uuid,
+                    pointId = 200, pointNum = 20, uuid = uuid,
                 )
             }.getOrDefault(ReportResult.FAIL)
             return r == ReportResult.OK
         }
-        // 小并发：栅栏同步放行（可配置加速）
+        // 竞态爆发：栅栏同步放行（对齐脚本 _concurrent_burst：begin_time=conf.ts，point_id=200+i）
         val gate = CompletableDeferred<Unit>()
         val results = java.util.concurrent.ConcurrentLinkedQueue<ReportResult>()
         coroutineScope {
@@ -240,7 +241,7 @@ class CourseRepository {
                             courseId = lesson.courseId, schoolId = schoolId,
                             bizCode = bizCode, videoType = videoType,
                             action = 2, stayTimeMs = 10_000,
-                            pointId = 200 + i, pointNum = 20, beginOffsetMs = 60_000, uuid = uuid,
+                            pointId = 200 + i, pointNum = 20, uuid = uuid,
                         )
                     }.getOrDefault(ReportResult.FAIL)
                     results.add(r)
@@ -253,7 +254,7 @@ class CourseRepository {
         return results.any { it == ReportResult.OK }
     }
 
-    /** 单课时刷课（action=1 启动 → 上报循环 → 看课检测置过 → 确认） */
+    /** 单课时刷课（action=1 启动 → 上报循环 → 看课检测置过 → action=3 收尾） */
     suspend fun brushLesson(
         lesson: VideoLesson,
         onProgress: (String) -> Unit = {},
@@ -294,12 +295,12 @@ class CourseRepository {
             CourseApi.getPlayerToken(sid, lesson.lessonId, lesson.contentType, bizCode)
         }
 
-        // Step 3: action=1 play start
+        // Step 3: action=1 play start（speed=1 / begin_time=report_time-60s / uuid=_0，对齐脚本）
         runCatching {
             CourseApi.reportBatch(
                 conf, token, lesson.lessonId, lesson.courseId, sid,
-                bizCode, videoType, 1, 0, 0, 20, 0,
-                "${java.util.UUID.randomUUID().toString().substring(0, 8)}_start",
+                bizCode, videoType, 1, 0, 0, 20,
+                "${java.util.UUID.randomUUID().toString().substring(0, 8)}_0",
             )
         }
         onProgress("已启动")
@@ -366,11 +367,18 @@ class CourseRepository {
             onProgress("第 $round 轮：进度未增长（$stall/3）")
         }
 
-        // Step 5: 完成确认 + 看课检测置过
+        // Step 5: 看课检测置过 + action=3 播放结束收尾（对齐脚本 Step 5 _report_point action=3）
         runCatching {
             CourseApi.addVideoss(sid, lesson.homeworkId, lesson.lessonId, 0)
             delay(3_000)
             CourseApi.addVideoss(sid, lesson.homeworkId, lesson.lessonId, 2)
+        }
+        runCatching {
+            CourseApi.reportBatch(
+                conf, token, lesson.lessonId, lesson.courseId, sid,
+                bizCode, videoType, 3, 0, 20, 20,
+                "${java.util.UUID.randomUUID().toString().substring(0, 8)}_20",
+            )
         }
         val passed = checkPassed(sid, lesson)
         onProgress(if (passed) "已完成 ${(pct * 100).toInt()}%" else "进度 ${(pct * 100).toInt()}%")

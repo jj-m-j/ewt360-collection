@@ -200,7 +200,7 @@ fun HomeScreen(
         if (fromPapers.isNotEmpty()) fromPapers else recentDays(7)
     }
 
-    // build174 同款：miuix 原生 TopAppBar + 上滑收缩（MiuixScrollBehavior）
+    // miuix 原生：TopAppBar + 上滑收缩（MiuixScrollBehavior，源码同款）
     val scrollBehavior = MiuixScrollBehavior()
 
     Scaffold(
@@ -208,7 +208,6 @@ fun HomeScreen(
             TopAppBar(
                 title = "试卷列表",
                 subtitle = userInfo?.realName?.let { "你好，$it" } ?: "",
-                titlePadding = 16.dp,
                 modifier = Modifier.drawBackdrop(
                     backdrop = topBarBackdrop,
                     shape = { RectangleShape },

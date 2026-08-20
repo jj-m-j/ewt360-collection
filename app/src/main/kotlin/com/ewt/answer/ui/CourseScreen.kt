@@ -56,7 +56,7 @@ import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 课程页：原生视频课刷课。顶栏与试卷/设置页统一（build174 同款 miuix TopAppBar + 上滑收缩）。
+ * 课程页：原生视频课刷课。顶栏与试卷/设置页统一（miuix 原生 TopAppBar + 上滑收缩 + LiquidGlass 模糊）。
  */
 @Composable
 fun CourseScreen(
@@ -76,7 +76,7 @@ fun CourseScreen(
     val glassSurface = MiuixTheme.colorScheme.surface
     val listState = rememberLazyListState()
 
-    // build174 同款：miuix 原生 TopAppBar + 上滑收缩
+    // miuix 原生：TopAppBar + 上滑收缩（MiuixScrollBehavior，源码同款）
     val scrollBehavior = MiuixScrollBehavior()
 
     LaunchedEffect(Unit) {
@@ -90,7 +90,6 @@ fun CourseScreen(
             TopAppBar(
                 title = "课程",
                 subtitle = "当前并发 ${CourseRepository.burstSize} 路",
-                titlePadding = 16.dp,
                 modifier = Modifier.drawBackdrop(
                     backdrop = topBarBackdrop,
                     shape = { RectangleShape },

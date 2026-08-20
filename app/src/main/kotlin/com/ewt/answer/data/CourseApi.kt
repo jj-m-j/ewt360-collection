@@ -31,6 +31,11 @@ data class GlobalConf(
  * 视频课（刷课）API：播放上报协议。
  * 源自 ewt360-brush（spark_ewt）逆向：BFE 播放上报 + HMAC-SHA1 签名（复刻 MSTPlayer makeSecretKey）。
  * bizCode: 1013=普通视频（web），2013=app 端。
+ *
+ * ⚠️ 699101「环境异常」修复（2026-08-20）：上报字段与 ewt_brush_v2 逐字段对齐——
+ *   action=1 的 speed 必须是 1（启动即 2 倍速 = 明显非人工）、begin_time 按 action 区分
+ *   （1=report_time-60s / 2=conf.ts / 3=report_time）、User-Agent 用浏览器 UA（去掉 okhttp 特征）。
+ *   之前 app 所有 action 都 speed=2 + begin_time=report_time-60s + okhttp UA → 被 BFE 判定环境异常。
  */
 object CourseApi {
     const val BFE = "https://bfe.ewt360.com"
@@ -176,6 +181,7 @@ object CourseApi {
     /**
      * 单条播放上报。返回 OK / FAIL / WAF。
      * action: 1=play start, 2=进度上报(竞态爆发), 3=完成
+     * 字段与 ewt_brush_v2（spark_ewt 协议）逐字段对齐，termux burst=1/12 实测不触发 699101。
      */
     suspend fun reportBatch(
         conf: GlobalConf,
@@ -189,12 +195,21 @@ object CourseApi {
         stayTimeMs: Int,
         pointId: Int,
         pointNum: Int,
-        beginOffsetMs: Int,
         uuid: String,
     ): ReportResult = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         val reportTime = now + conf.diffTime
-        val beginTime = if (action == 1) conf.ts else reportTime - beginOffsetMs
+        // begin_time 按 action 对齐脚本（ewt_brush_v2）：
+        // - action=1（play start）：report_time - 60s（脚本 _report_point 默认 begin_offset_ms=60000）
+        // - action=2（进度上报）  ：conf.ts（脚本 _concurrent_burst 竞态爆发用会话 ts）
+        // - action=3（播放结束）  ：report_time（脚本 begin_offset_ms=0）
+        val beginTime = when (action) {
+            1 -> reportTime - 60_000
+            3 -> reportTime
+            else -> conf.ts
+        }
+        // action=1 播放启动必须 speed=1（脚本 action=1 用默认 speed=1；启动即 2 倍速 = 明显非人工 → 699101）
+        val speed = if (action == 1) 1 else 2
         val sig = makeSignature(action, stayTimeMs, token, reportTime, conf.secret)
         val userId = token.substringBefore("-").toLongOrNull() ?: 0L
 
@@ -209,7 +224,7 @@ object CourseApi {
             put("point_time", 60000)
             put("point_num", pointNum)
             put("video_type", videoType)
-            put("speed", 2)
+            put("speed", speed)
             put("quality", "高清")
             put("action", action)
             put("fallback", 0)
@@ -252,6 +267,12 @@ object CourseApi {
             .header("token", token)
             .header("x-bfe-session-id", conf.sessionId)
             .header("Content-Type", "application/json")
+            // 浏览器 UA（对齐脚本/官方播放器），去掉 OkHttp 默认 UA 的脚本特征
+            .header(
+                "User-Agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                    "(KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 Edg/116.0.1938.76",
+            )
             .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
         try {

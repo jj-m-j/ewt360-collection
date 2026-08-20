@@ -50,7 +50,6 @@ fun CourseSettingsScreen(
         topBar = {
             TopAppBar(
                 title = "课程设置",
-                titlePadding = 16.dp,
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -87,7 +86,7 @@ fun CourseSettingsScreen(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = "单路最稳定（推荐）；路数越多刷得越快，但 12 路爆发已被风控识别（699101 环境异常），超过安全路数可能被封进度。",
+                        text = "单路最稳定；路数越多刷得越快。上报字段已与 ewt360-brush 脚本对齐（begin_time / speed / UA / action=3 收尾），12 路竞态爆发可用；如仍触发 699101 环境异常，请降低路数、等待冷却后重试。",
                         fontSize = 12.sp,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
@@ -96,7 +95,7 @@ fun CourseSettingsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        listOf(1, 2, 4, 6).forEach { v ->
+                        listOf(1, 2, 4, 6, 12).forEach { v ->
                             Card(
                                 modifier = Modifier.weight(1f),
                                 cornerRadius = 16.dp,
@@ -136,7 +135,7 @@ fun CourseSettingsScreen(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        text = "模拟播放器向上报心跳（HMAC-SHA1 签名，协议源自 ewt360-brush）。单路约每轮推进 20 秒播放时长，22 分钟课时约 11 分钟刷完；刷新会话 + 看课检测自动处理停滞。",
+                        text = "模拟播放器上报心跳（HMAC-SHA1 签名，协议源自 ewt360-brush）。每轮间隔约 10 秒、上报 stay_time=10s；竞态爆发利用服务端 check-and-deduct 非原子性，12 路等效数倍加速。刷新会话 + 看课检测自动处理停滞。",
                         fontSize = 12.sp,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )

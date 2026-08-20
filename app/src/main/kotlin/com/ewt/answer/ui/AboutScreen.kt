@@ -43,7 +43,7 @@ import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 设置页（底部 Tab）：与试卷/课程页统一（build174 同款 miuix TopAppBar + 上滑收缩）。
+ * 设置页（底部 Tab）：与试卷/课程页统一（miuix 原生 TopAppBar + 上滑收缩 + LiquidGlass 模糊）。
  */
 @Composable
 fun AboutScreen(
@@ -59,14 +59,13 @@ fun AboutScreen(
     val glassSurface = MiuixTheme.colorScheme.surface
     val listState = rememberLazyListState()
 
-    // build174 同款：miuix 原生 TopAppBar + 上滑收缩
+    // miuix 原生：TopAppBar + 上滑收缩
     val scrollBehavior = MiuixScrollBehavior()
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = "设置",
-                titlePadding = 16.dp,
                 modifier = Modifier.drawBackdrop(
                     backdrop = topBarBackdrop,
                     shape = { RectangleShape },
@@ -194,7 +193,6 @@ fun AboutPlaceholderScreen(onBack: () -> Unit) {
         topBar = {
             top.yukonga.miuix.kmp.basic.TopAppBar(
                 title = "关于",
-                titlePadding = 16.dp,
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(

@@ -55,7 +55,8 @@ dependencies {
     // 图片加载
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
-    // Liquid Glass：backdrop 已源码集成（app/src/main/kotlin/com/kyant/backdrop）
+    // Liquid Glass：AndroidLiquidGlass-kmp（顶栏/底栏模糊），官方库依赖，不再内嵌源码
+    implementation("io.github.kyant0:backdrop:2.0.0")
     // shapes：lens 效果需要的圆角矩形形状（官方库）
     implementation("io.github.kyant0:shapes:1.2.0")
     // androidx.annotation（FloatRange/RequiresApi 等）
