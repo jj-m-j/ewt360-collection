@@ -1,14 +1,11 @@
 package com.ewt.answer.ui
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -49,14 +46,13 @@ fun rememberCollapseProgress(listState: LazyListState, collapseDistancePx: Float
 }
 
 /**
- * 液态玻璃滚动收缩顶栏（试卷列表 / 课程页共用同一套设计逻辑）：
+ * 液态玻璃滚动收缩顶栏（试卷 / 课程 / 设置 三页共用）：
  *
- * - LiquidGlass 材质与底部导航同语言：blur 10dp + surface 62%，完全保留既有实现
- * - 顶栏整体位于状态栏下方（statusBarsPadding），标题不贴状态栏
- * - 标题始终处于顶栏垂直视觉中心（上下等边距），展开态左侧 16dp → 收缩态水平居中
- * - 标题字号 26sp → 17sp 连续缩放
- * - 副标题（如"你好，xx"）随滚动淡出 + 上移 8dp + 轻微缩小，不占位
- * - 右侧 actions 保留（如课程页设置图标）
+ * - LiquidGlass 材质与底部导航同语言：blur 10dp + surface 62%，完全保留
+ * - 顶栏背景覆盖状态栏区域（Edge-to-Edge 下从屏幕顶部渲染，玻璃延伸到状态栏后面）
+ * - 大标题展开态左侧 16dp + 副标题下方左对齐 → 滚动时标题缩放并水平居中、副标题淡出
+ * - 标题始终处于（状态栏 + 顶栏）整体垂直中心，上下等边距
+ * - 右侧 actions 保留
  */
 @Composable
 fun CollapsingHeaderBar(
@@ -67,85 +63,80 @@ fun CollapsingHeaderBar(
     glassSurface: Color,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
+    // 展开态含状态栏区域，收缩态紧凑；标题垂直居中保证上下等边距
     val headerHeight = lerp(96.dp, 54.dp, progress)
     val titleSize = lerp(26.sp, 17.sp, progress)
     val density = LocalDensity.current
 
-    // 顶栏整体位于状态栏下方（含安全区域），标题不贴近状态栏
-    Box(
-        Modifier
+    BoxWithConstraints(
+        modifier = Modifier
             .fillMaxWidth()
-            .statusBarsPadding(),
+            .height(headerHeight)
+            // LiquidGlass 材质（与底部同源，完全保留）：背景覆盖到屏幕顶部（含状态栏）
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { RectangleShape },
+                effects = { blur(10f.dp.toPx()) },
+                onDrawSurface = {
+                    drawRect(glassSurface.copy(alpha = 0.62f))
+                },
+            ),
     ) {
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(headerHeight)
-                // LiquidGlass 材质（与底部同源，完全保留）
-                .drawBackdrop(
-                    backdrop = backdrop,
-                    shape = { RectangleShape },
-                    effects = { blur(10f.dp.toPx()) },
-                    onDrawSurface = {
-                        drawRect(glassSurface.copy(alpha = 0.62f))
-                    },
-                ),
-        ) {
-            // px 换算全部在 composable 作用域预计算（miuix Surface 同款写法）
-            val containerW = with(density) { maxWidth.toPx() }
-            val offset16Px = with(density) { 16.dp.toPx() }
-            val offset8Px = with(density) { 8.dp.toPx() }
-            var titleW by remember { mutableIntStateOf(0) }
-            var titleH by remember { mutableIntStateOf(0) }
+        val containerW = with(density) { maxWidth.toPx() }
+        val offset16Px = with(density) { 16.dp.toPx() }
+        val offset8Px = with(density) { 8.dp.toPx() }
+        val gapPx = with(density) { 4.dp.toPx() }
+        var titleW by remember { mutableIntStateOf(0) }
+        var titleH by remember { mutableIntStateOf(0) }
 
-            // 标题：始终垂直居中（上下等边距）；水平从左侧 16dp 平滑移到中心
+        // 主标题：始终垂直居中（上下等边距）；水平从左侧 16dp 平滑移到居中
+        Text(
+            text = title,
+            fontSize = titleSize,
+            fontWeight = FontWeight.SemiBold,
+            color = MiuixTheme.colorScheme.onSurface,
+            maxLines = 1,
+            modifier = Modifier
+                .align(Alignment.Center)
+                .onSizeChanged {
+                    titleW = it.width
+                    titleH = it.height
+                }
+                .graphicsLayer {
+                    translationX = -(containerW / 2f - offset16Px - titleW / 2f) * (1f - progress)
+                },
+        )
+
+        // 副标题：初始与主标题左对齐（左侧 16dp），随滚动淡出 + 上移 + 轻微缩小（不占位）
+        if (subtitle != null) {
+            var subW by remember { mutableIntStateOf(0) }
             Text(
-                text = title,
-                fontSize = titleSize,
-                fontWeight = FontWeight.SemiBold,
-                color = MiuixTheme.colorScheme.onSurface,
+                text = subtitle,
+                fontSize = 13.sp,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 maxLines = 1,
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .onSizeChanged {
-                        titleW = it.width
-                        titleH = it.height
-                    }
+                    .onSizeChanged { subW = it.width }
                     .graphicsLayer {
-                        // progress=0 左移（到 16dp 处），progress=1 居中
-                        translationX = -(containerW / 2f - offset16Px - titleW / 2f) * (1f - progress)
+                        // 水平与主标题同规则左对齐；垂直在标题下方
+                        translationX = -(containerW / 2f - offset16Px - subW / 2f) * (1f - progress)
+                        translationY = titleH / 2f + gapPx * (1f - progress) - offset8Px * progress
+                        alpha = 1f - progress
+                        scaleX = 1f - 0.04f * progress
+                        scaleY = 1f - 0.04f * progress
                     },
             )
+        }
 
-            // 副标题：标题下方，随滚动淡出 + 上移 + 轻微缩小（不占位）
-            if (subtitle != null) {
-                Text(
-                    text = subtitle,
-                    fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .graphicsLayer {
-                            alpha = 1f - progress
-                            translationY = titleH / 2f + (1f - progress) * with(density) { 4.dp.toPx() } - offset8Px * progress
-                            scaleX = 1f - 0.04f * progress
-                            scaleY = 1f - 0.04f * progress
-                        },
-                )
-            }
-
-            // 右侧 actions（如课程页设置图标）
-            if (actions != null) {
-                Row(
-                    Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    actions()
-                }
-            }
+        // 右侧 actions（如课程页设置图标）
+        Row(
+            Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            actions()
         }
     }
 }

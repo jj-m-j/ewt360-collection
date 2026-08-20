@@ -7,9 +7,6 @@ import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -110,7 +107,7 @@ private val FilterListIcon: ImageVector by lazy {
     ).build()
 }
 
-/** 刷新图标（material refresh） */
+/** 刷新图标（material refresh，静态，不旋转） */
 private val RefreshIcon: ImageVector by lazy {
     ImageVector.Builder(
         name = "Refresh",
@@ -145,7 +142,7 @@ fun HomeScreen(
 
     var showBrushDialog by remember { mutableStateOf(false) }
 
-    // 顶栏独立 backdrop：捕获 Scaffold 内容区（列表），材质与底部 LiquidGlass 同源（blur 10dp + surface 62%）
+    // 顶栏独立 backdrop：捕获 Scaffold 内容区（列表），材质与底部 LiquidGlass 同源
     val topBarBackdrop = rememberLayerBackdrop()
     val glassSurface = MiuixTheme.colorScheme.surface
 
@@ -163,11 +160,11 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { vm.load() }
 
-    // ── 滚动收缩进度：基于列表滚动距离连续插值（共享组件统一计算） ──
+    // ── 滚动收缩进度（共享组件统一计算） ──
     val collapseDistance = with(LocalDensity.current) { 64.dp.toPx() }
     val collapseProgress by rememberCollapseProgress(listState, collapseDistance)
 
-    // ── 筛选计算（基于已加载试卷） ──
+    // ── 筛选计算 ──
     val readyGroups = (uiState as? HomeViewModel.UiState.Ready)?.groups
     val allPapers = remember(readyGroups) { readyGroups?.flatMap { it.papers } ?: emptyList() }
     val dates = remember(allPapers) {
@@ -200,7 +197,6 @@ fun HomeScreen(
             .toSortedMap(compareByDescending { it })
     }
 
-    // 一键刷今日可选日期：优先试卷实际日期，否则最近 7 天
     val brushDates = remember(allPapers) {
         val fromPapers = allPapers.mapNotNull { it.date.takeIf { d -> d.isNotBlank() } }
             .distinct().sortedDescending()
@@ -209,7 +205,6 @@ fun HomeScreen(
 
     Scaffold(
         topBar = {
-            // 共享液态玻璃滚动收缩顶栏（与课程页统一）
             CollapsingHeaderBar(
                 title = "试卷列表",
                 subtitle = userInfo?.realName?.let { "你好，$it" },
@@ -219,17 +214,16 @@ fun HomeScreen(
             )
         },
     ) { padding ->
-        // 内容区（不含顶栏）作为顶栏模糊的捕获源
         Box(
             Modifier
                 .fillMaxSize()
                 .layerBackdrop(topBarBackdrop),
         ) {
-            // 下拉刷新：指示器通过 contentPadding.top 明显下移，远离状态栏（源码 offset(y=contentPadding.top)）
+            // 下拉刷新：指示器贴近内容区顶部（全部任务标题上方居中），顶栏已覆盖状态栏故不贴状态栏
             PullToRefresh(
                 isRefreshing = refreshing,
                 onRefresh = { vm.load(force = true) },
-                contentPadding = PaddingValues(top = 56.dp),
+                contentPadding = PaddingValues(top = 6.dp),
             ) {
                 LazyColumn(
                     state = listState,
@@ -242,7 +236,6 @@ fun HomeScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    // ── 任务工具区：全部任务 + 刷新（同一 Section Header） ──
                     item(key = "toolbar") {
                         RefreshRow(
                             refreshing = refreshing,
@@ -251,7 +244,6 @@ fun HomeScreen(
                             onRefresh = { vm.load(force = true) },
                         )
                     }
-                    // ── 搜索 / 筛选：搜索框 + 三条杠（同一行，弱化视觉权重） ──
                     item(key = "search") {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -278,7 +270,6 @@ fun HomeScreen(
                             )
                         }
                     }
-                    // ── 快捷操作区 ──
                     item(key = "quick_title") {
                         SmallTitle(text = "快捷操作")
                     }
@@ -350,7 +341,6 @@ fun HomeScreen(
         }
     }
 
-    // 一键刷今日：日期滚轮选择
     if (showBrushDialog) {
         BrushDateDialog(
             dateOptions = brushDates,
@@ -363,7 +353,6 @@ fun HomeScreen(
         )
     }
 
-    // 刷卷结果
     brushResult?.let { result ->
         WindowDialog(
             show = true,
@@ -407,14 +396,6 @@ private fun RefreshRow(
     subjectFilter: String?,
     onRefresh: () -> Unit,
 ) {
-    // 刷新时图标持续旋转（轻量状态反馈）
-    val infinite = rememberInfiniteTransition(label = "refresh_spin")
-    val angle by infinite.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
-        label = "refresh_angle",
-    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -436,15 +417,12 @@ private fun RefreshRow(
                 imageVector = RefreshIcon,
                 contentDescription = "刷新",
                 tint = MiuixTheme.colorScheme.primary,
-                modifier = Modifier.graphicsLayer {
-                    rotationZ = if (refreshing) angle else 0f
-                },
             )
         }
     }
 }
 
-// ── 搜索 / 筛选（三条杠锚定搜索框右侧，弱化视觉权重） ─────────────
+// ── 搜索 / 筛选 ────────────────────────────────────────────────
 
 @Composable
 private fun FilterRow(
@@ -476,7 +454,6 @@ private fun FilterRow(
             Icon(
                 imageVector = FilterListIcon,
                 contentDescription = "筛选",
-                // 弱化：次级文字色，不再抢眼
                 tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
                 modifier = Modifier
                     .size(20.dp)
@@ -515,9 +492,6 @@ private fun FilterRow(
 
 private enum class FilterPane { Main, Date, Subject }
 
-/**
- * 三条杠弹层 —— Circle → Capsule → Dialog 连续 Morph（缩小版：固定 260×240，滚轮 3 项）
- */
 @Composable
 private fun FilterPopupCard(
     exiting: Boolean,
@@ -540,7 +514,6 @@ private fun FilterPopupCard(
     val morph = remember { Animatable(0f) }
     val contentProgress = remember { Animatable(0f) }
     val exitContent = remember { Animatable(0f) }
-    // 预计算 px（graphicsLayer 内只引用 Float）
     val offset6Px = with(LocalDensity.current) { 6.dp.toPx() }
 
     val morphEase = CubicBezierEasing(0.2f, 0f, 0f, 1f)
@@ -565,7 +538,6 @@ private fun FilterPopupCard(
     }
 
     val p = morph.value
-    // 缩小版：小圆(44×44) → 对话框(260×240)，圆角 22 → 20
     val w = lerp(44.dp, 260.dp, p)
     val h = lerp(44.dp, 240.dp, p)
     val corner = lerp(22.dp, 20.dp, p)
@@ -772,9 +744,8 @@ private fun FilterOptionRow(label: String, value: String, onClick: () -> Unit) {
     }
 }
 
-// ── 快捷操作（紧凑） ──────────────────────────────────────────
+// ── 快捷操作 ──────────────────────────────────────────────────
 
-/** 一键刷今日入口卡片 */
 @Composable
 private fun BrushTodayEntry(brushing: Boolean, progress: String, onClick: () -> Unit) {
     Card(
@@ -815,7 +786,6 @@ private fun BrushTodayEntry(brushing: Boolean, progress: String, onClick: () -> 
     }
 }
 
-/** 粘贴链接查询入口卡片 */
 @Composable
 private fun LinkQueryEntry(onClick: () -> Unit) {
     Card(
@@ -846,7 +816,6 @@ private fun LinkQueryEntry(onClick: () -> Unit) {
     }
 }
 
-/** 扫描状态行（融入页面结构） */
 @Composable
 private fun ScanStatusRow(text: String) {
     Row(
@@ -872,7 +841,6 @@ private fun ScanStatusRow(text: String) {
     }
 }
 
-/** 刷今日：日期滚轮选择对话框 */
 @Composable
 private fun BrushDateDialog(
     dateOptions: List<String>,
@@ -922,8 +890,6 @@ private fun BrushDateDialog(
         }
     }
 }
-
-// ── 其他卡片 / 工具 ────────────────────────────────────────────
 
 @Composable
 private fun PaperRow(
@@ -998,14 +964,11 @@ private fun EmptyHint(message: String) {
     }
 }
 
-// ── 日期工具 ───────────────────────────────────────────────────
-
 private fun formatToday(): String {
     val d = java.util.Date()
     return String.format("%02d-%02d", d.month + 1, d.date)
 }
 
-/** 最近 count 天的 "MM-dd" 列表（今天在前） */
 private fun recentDays(count: Int): List<String> {
     val cal = java.util.Calendar.getInstance()
     return (0 until count).map { i ->
