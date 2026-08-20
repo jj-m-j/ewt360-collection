@@ -55,6 +55,6 @@ dependencies {
     // 图片加载
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
-    // QmBlurView：实时高斯模糊（Native C++，Android 5.0+）
-    implementation("com.qmdeve.blurview:core:1.3.0")
+    // Liquid Glass（backdrop）：Compose 离屏层模糊，不碰 View 树
+    implementation("io.github.kyant0:backdrop:1.0.0")
 }
