@@ -21,15 +21,20 @@ object HtmlCleaner {
         Regex("""<img[^>]*Wirisformula[^>]*src="([^"]*)"[^>]*>""", RegexOption.IGNORE_CASE)
     private val brRe = Regex("""<br[^>]*>""", RegexOption.IGNORE_CASE)
     private val stripTagRe = Regex("""<(?!img\b|/img\b)[^>]+>""", RegexOption.IGNORE_CASE)
+    // 匹配所有图片（file.ewt360.com / Wiris 公式图 / 协议相对 // 均覆盖）
     private val imgRe = Regex(
-        """<img\s+src="(https?://file\.ewt360\.com/[^"]*)"(?:\s+style="([^"]*)")?\s*/?>""",
+        """<img\s+src="((?:https?:)?//[^"]*)"(?:[^>]*?)>""",
         RegexOption.IGNORE_CASE,
     )
     private val newlineRe = Regex("""\n{3,}""")
 
-    /** 图片 URL 统一转 https（http 明文在 Android 默认被禁，Coil 无法加载） */
-    private fun normalizeImgUrl(url: String): String =
-        url.replace(Regex("""^http://file\.ewt360\.com/"""), "https://file.ewt360.com/")
+    /** 图片 URL 统一：协议相对补 https，http 明文转 https（Android 默认禁明文） */
+    private fun normalizeImgUrl(url: String): String {
+        var u = url.trim()
+        if (u.startsWith("//")) u = "https:$u"
+        u = u.replace(Regex("""^http://file\.ewt360\.com/"""), "https://file.ewt360.com/")
+        return u
+    }
 
     /**
      * 预处理：清洗为“仅含 <img> 标签”的安全 HTML 字符串（与 JS cleanHtmlKeepImg 一致）

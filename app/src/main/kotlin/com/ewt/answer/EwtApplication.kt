@@ -1,13 +1,16 @@
 package com.ewt.answer
 
 import android.app.Application
+import android.webkit.CookieManager
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.ewt.answer.data.AppContainer
-import com.ewt.answer.data.CourseApi
 import com.ewt.answer.data.DebugLog
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 
 class EwtApplication : Application(), SingletonImageLoader.Factory {
@@ -16,14 +19,34 @@ class EwtApplication : Application(), SingletonImageLoader.Factory {
         super.onCreate()
         DebugLog.init(this)
         AppContainer.init(this)
-        // BFE 上报需要真实设备分辨率（699102 设备信息异常：Android 设备 + web 横向分辨率 = 矛盾）
-        val dm = resources.displayMetrics
-        CourseApi.deviceResolution = "${dm.widthPixels}*${dm.heightPixels}"
     }
 
-    /** 图片请求专用 OkHttp：统一补 UA / Referer / Origin（EWT 图床无 Referer 会 403） */
+    /**
+     * 图片请求专用 OkHttp：
+     * - 统一补 UA / Referer / Origin（EWT 图床无 Referer 会 403）
+     * - 接 WebView 登录 Cookie（CookieManager 全局，图床需要登录态才能加载）
+     */
     private val imageClient by lazy {
         OkHttpClient.Builder()
+            .cookieJar(object : CookieJar {
+                override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {}
+
+                override fun loadForRequest(url: HttpUrl): List<Cookie> {
+                    val cookieStr = CookieManager.getInstance().getCookie(url.toString()) ?: return emptyList()
+                    return cookieStr.split(";").mapNotNull { part ->
+                        val kv = part.trim().split("=", limit = 2)
+                        if (kv.size != 2 || kv[0].isBlank()) return@mapNotNull null
+                        runCatching {
+                            Cookie.Builder()
+                                .domain(url.host)
+                                .path("/")
+                                .name(kv[0])
+                                .value(kv[1])
+                                .build()
+                        }.getOrNull()
+                    }
+                }
+            })
             .addInterceptor { chain ->
                 val request = chain.request().newBuilder()
                     .header("User-Agent", "Mozilla/5.0")
@@ -35,7 +58,7 @@ class EwtApplication : Application(), SingletonImageLoader.Factory {
             .build()
     }
 
-    /** Coil3 图片加载器：使用带默认头的 OkHttp 网络加载 */
+    /** Coil3 图片加载器：使用带默认头 + Cookie 的 OkHttp 网络加载 */
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
             .components { add(OkHttpNetworkFetcherFactory(callFactory = { imageClient })) }
