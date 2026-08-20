@@ -38,7 +38,7 @@ data class GlobalConf(
  *     Android 设备特征 = 身份不一致 → 699101；官方 app Conscrypt+Android 一致、termux OpenSSL+Windows 自洽）
  *  ③ URL query 完全对齐官方 app：TrLessonId + x-bfe-session-id(in URL) + TrVideoBizCode + TrUuId(纯8位hex)
  *     + TrFallback + TrUserId（去掉 sdkVersion/_ 参数）
- *  ④ 传输层：HTTP/1.1、Accept: */*、Content-Type 纯 application/json、UA=python-httpx（诚实脚本 UA）
+ *  ④ 传输层：HTTP/1.1、Accept 头、Content-Type 纯 application/json、UA=python-httpx（诚实脚本 UA）
  */
 object CourseApi {
     const val BFE = "https://bfe.ewt360.com"
