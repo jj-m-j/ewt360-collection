@@ -169,7 +169,7 @@ fun HomeScreen(
     LaunchedEffect(Unit) { vm.load() }
 
     // ── 滚动收缩进度：基于列表滚动距离连续插值（非阈值切换） ──
-    val collapseDistance = with(LocalDensity.current) { 64.dp.toPx() }
+    val collapseDistance = with(LocalDensity.current) { toPx(64.dp) }
     val collapseProgress by remember(listState) {
         derivedStateOf {
             val info = listState.layoutInfo
@@ -434,7 +434,7 @@ private fun CollapsingHeader(
                 },
             ),
     ) {
-        val containerW = maxWidth.toPx()
+        val containerW = toPx(maxWidth)
         var columnW by remember { mutableIntStateOf(0) }
         Box(
             Modifier.fillMaxSize(),
@@ -446,7 +446,7 @@ private fun CollapsingHeader(
                     .onSizeChanged { columnW = it.width }
                     .graphicsLayer {
                         // progress=0 时标题区位于左侧 16dp；progress=1 时水平居中（连续插值）
-                        translationX = (1f - progress) * -(containerW / 2f - 16.dp.toPx() - columnW / 2f)
+                        translationX = (1f - progress) * -(containerW / 2f - toPx(16.dp) - columnW / 2f)
                     },
             ) {
                 Text(
@@ -465,7 +465,7 @@ private fun CollapsingHeader(
                     maxLines = 1,
                     modifier = Modifier.graphicsLayer {
                         alpha = 1f - progress
-                        translationY = -8.dp.toPx() * progress
+                        translationY = -toPx(8.dp) * progress
                         scaleX = 1f - 0.04f * progress
                         scaleY = 1f - 0.04f * progress
                     },
