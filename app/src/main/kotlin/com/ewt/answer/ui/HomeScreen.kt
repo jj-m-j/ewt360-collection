@@ -245,12 +245,6 @@ fun HomeScreen(
                     }
                 }
             }
-            item(key = "toolbar") {
-                RefreshRow(
-                    dateFilter = dateFilter,
-                    subjectFilter = subjectFilter,
-                )
-            }
             item(key = "search") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -389,31 +383,6 @@ fun HomeScreen(
                 }
             }
         }
-    }
-}
-
-/** 筛选状态行（刷新按钮已移至大标题右侧） */
-@Composable
-private fun RefreshRow(
-    dateFilter: String?,
-    subjectFilter: String?,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        val conds = listOfNotNull(dateFilter, subjectFilter)
-        Text(
-            text = if (conds.isEmpty()) "全部任务" else "筛选：" + conds.joinToString(" · "),
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
-            color = MiuixTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
     }
 }
 
