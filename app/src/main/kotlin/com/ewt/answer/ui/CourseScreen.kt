@@ -59,8 +59,9 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /**
  * 课程页（WebView 刷课版）：
  * 大标题（miuix title1 排版）→ 概览卡（课时统计 + 开始/停止 + 实时进度 + URL 复制）→ WebView（真实浏览器环境）。
- * WebView 复用登录 Cookie，注入 JS 自动连播（85% 切换 + 2 倍速 + 自动过检 + 锁进度条 + 跳题），
- * JS↔原生桥实时回传进度；拦截 ewt app 跳转/下载（同登录页 scheme 拦截逻辑）。
+ * WebView 复用登录 Cookie + 伪装 Chrome Android UA（避免 EWT 识别 WebView 跳 app 下载页），
+ * 注入 JS 自动连播（85% 切换 + 2 倍速 + 自动过检 + 锁进度条 + 跳题），JS↔原生桥实时回传进度；
+ * 拦截 ewt app 跳转/下载/下载引导页。
  */
 @Composable
 fun CourseScreen(
@@ -146,7 +147,7 @@ fun CourseScreen(
             }
         }
 
-        // ── 概览卡：统计 + 控制 + 实时进度 + URL 复制 ──
+        // ── 概览卡（固定高度，避免进度更新导致 WebView 重排闪烁） ──
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -164,7 +165,7 @@ fun CourseScreen(
                     StatItem("$doneCount", "已完成")
                 }
                 Spacer(Modifier.height(10.dp))
-                // 当前课时 + 进度
+                // 当前课时 + 进度（固定行高）
                 Text(
                     text = if (brushing) "正在刷：$lessonTitle" else "当前：$lessonTitle",
                     fontSize = 14.sp,
@@ -183,9 +184,10 @@ fun CourseScreen(
                     text = "$progress% · 已刷 $switchedCount 课",
                     fontSize = 12.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
                 )
                 Spacer(Modifier.height(10.dp))
-                // 控制 + 状态
+                // 控制 + 状态（固定两行高）
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -217,27 +219,25 @@ fun CourseScreen(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                // URL + 复制
-                if (currentUrl.isNotBlank()) {
-                    Spacer(Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = currentUrl,
-                            fontSize = 10.sp,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        TextButton(
-                            text = "复制",
-                            onClick = { clipboard.setText(AnnotatedString(currentUrl)) },
-                        )
-                    }
+                // URL + 复制（固定显示，空时占位，避免高度跳动）
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = currentUrl.ifBlank { "https://web.ewt360.com/ …" },
+                        fontSize = 10.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    TextButton(
+                        text = "复制",
+                        onClick = { clipboard.setText(AnnotatedString(currentUrl)) },
+                    )
                 }
             }
         }
@@ -337,17 +337,24 @@ private val BRUSH_JS = """
     } catch(e){}
   }, 1500);
 
-  // 跳题/跳过弹窗
+  // 跳题/跳过弹窗（低频 + 只查可见按钮，避免全页扫描卡顿闪烁）
   setInterval(function(){
     if (!window.__ewtBrushOn) return;
     try {
-      var all = document.querySelectorAll('button,span,div');
+      var root = document.querySelector('[class*="dialog"],[class*="modal"],[class*="popup"],[class*="mask"]');
+      var scope = root || document;
+      var all = scope.querySelectorAll('button');
       for (var i=0;i<all.length;i++){
-        var t = all[i].textContent;
-        if (t && t.trim() === '跳过' && all[i].children.length === 0) { all[i].click(); skipped++; break; }
+        var b = all[i];
+        if (b.disabled) continue;
+        var t = (b.textContent || '').trim();
+        if (t === '跳过' || t === '知道了' || t === '继续观看' || t === '确定') {
+          if (b.offsetParent !== null) { b.click(); skipped++; }
+          break;
+        }
       }
     } catch(e){}
-  }, 1000);
+  }, 3000);
 
   // 自动连播：85% 进度 → 点列表下一个 + 回传进度
   setInterval(function(){
@@ -390,6 +397,9 @@ private fun createBrushWebView(
     wv.settings.domStorageEnabled = true
     wv.settings.databaseEnabled = true
     wv.settings.allowFileAccess = false
+    // 伪装真实 Chrome Android UA：EWT 识别到 WebView UA 会跳 app 下载页（from=appDownloadPage）
+    wv.settings.userAgentString =
+        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
     // 允许自动播放（不要求用户手势）
     wv.settings.mediaPlaybackRequiresUserGesture = false
     // JS↔原生桥
@@ -431,15 +441,16 @@ private fun createBrushWebView(
 }
 
 /**
- * 是否拦截该 URL：仅放行 http/https；拦截 intent:// / ewt:// / mistong:// 等自定义 scheme
- * （EWT360 网页在 Android 上会尝试唤起原生 App 或引导下载，WebView 不支持这些 scheme）
+ * 是否拦截该 URL：仅放行 http/https 且非下载引导；
+ * 拦截 intent:// / ewt:// / mistong:// 等自定义 scheme、应用市场、APK 直链、app 下载引导页。
  */
 private fun shouldBlock(url: String?): Boolean {
     val u = url ?: return true
-    if (u.startsWith("http://") || u.startsWith("https://")) {
-        // 拦截应用市场/APK 直链（避免跳到下载页）
-        if (u.contains("play.google.com") || u.contains("appgallery") || u.endsWith(".apk")) return true
-        return false
-    }
-    return true
+    if (!(u.startsWith("http://") || u.startsWith("https://"))) return true
+    // 应用市场 / APK 直链
+    if (u.contains("play.google.com") || u.contains("appgallery") || u.endsWith(".apk")) return true
+    // app 下载引导页（ewt360.com 主站，非 web. 子域）
+    if (u.contains("from=appDownloadPage")) return true
+    if (u.startsWith("https://www.ewt360.com") || u.startsWith("http://www.ewt360.com")) return true
+    return false
 }
