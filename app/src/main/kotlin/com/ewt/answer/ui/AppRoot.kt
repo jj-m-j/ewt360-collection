@@ -8,6 +8,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -160,7 +161,7 @@ fun AppRoot() {
         // 主页列表滚动位置（跨页面保留，返回不跳顶）
         val homeListState: LazyListState = rememberLazyListState()
 
-        // ── 预测式返回：手势进度驱动（参考 MIUIX NavDisplay MiuixDefault：下层 25% 视差 + 0.9→1.0 渐入） ──
+        // ── 预测式返回：手势进度驱动（下层 25% 视差 + 0.9→1.0 渐入；Scale/Translation/Alpha/圆角统一由 backProgress 驱动） ──
         val backProgress = remember { Animatable(0f) }
         var showPrevLayer by remember { mutableStateOf(false) }
         var gestureCommitted by remember { mutableStateOf(false) }
@@ -177,7 +178,8 @@ fun AppRoot() {
 
         /**
          * 返回（预测式/系统键）：
-         * 松手后从当前手势进度丝滑补到完全划出（不瞬移），然后切到上一页继续滑出淡出。
+         * 松手后从当前进度以 FastOutSlowIn 曲线补到完全划出（自然增强退出感，不瞬移），
+         * 再切换到上一页并继续滑出淡出。
          */
         fun goBack() {
             val prev = previous
@@ -188,10 +190,10 @@ fun AppRoot() {
             if (gestureCommitted) return // 动画进行中，防重入
             gestureCommitted = true
             scope.launch {
-                // 从当前进度动画到完全划出（顶层内容尚未切换，视觉连续，无瞬移）
+                // 接近阈值自然增强退出感（快速起步 → 柔和到位）
                 backProgress.animateTo(
                     1f,
-                    tween(durationMillis = 200, easing = LinearEasing),
+                    tween(durationMillis = 220, easing = FastOutSlowInEasing),
                 )
                 screen = prev
                 showPrevLayer = true
@@ -220,6 +222,7 @@ fun AppRoot() {
 
                 override fun handleOnBackProgressed(backEvent: BackEventCompat) {
                     if (!gestureCommitted) {
+                        // 跟手：连续稳定
                         scope.launch { backProgress.snapTo(backEvent.progress.coerceIn(0f, 1f)) }
                     }
                 }
@@ -228,9 +231,10 @@ fun AppRoot() {
                     if (!gestureCommitted) {
                         showPrevLayer = false
                         scope.launch {
+                            // 取消返回：克制的 Spring 恢复（阻尼 0.95，几乎无可见回弹）
                             backProgress.animateTo(
                                 0f,
-                                tween(durationMillis = 240, easing = LinearEasing),
+                                spring(dampingRatio = 0.95f, stiffness = 350f),
                             )
                         }
                     }
@@ -265,7 +269,7 @@ fun AppRoot() {
 
         // ── 双层渲染：背景=上一页（手势/动画渐入），顶层=当前页（手势跟随） ──
         Box(Modifier.fillMaxSize()) {
-            // 背景层（对齐 miuix MiuixDefault covered 层：25% 视差 + alpha 0.9→1.0 渐入；退出阶段保持原位）
+            // 背景层（25% 视差 + alpha 0.9→1.0 渐入；退出阶段保持原位）
             if (previous != null && (previous == Screen.Main || showPrevLayer)) {
                 Box(
                     Modifier
@@ -302,6 +306,7 @@ fun AppRoot() {
                     .fillMaxSize()
                     .graphicsLayer {
                         val p = backProgress.value
+                        // Translation / Alpha / Corner 统一由同一进度驱动，节奏一致
                         translationX = size.width * p
                         alpha = if (p >= 1f) (2f - p).coerceIn(0f, 1f) else 1f
                         if (p > 0f) {

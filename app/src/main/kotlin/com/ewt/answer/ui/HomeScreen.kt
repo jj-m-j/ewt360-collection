@@ -2,6 +2,7 @@ package com.ewt.answer.ui
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -218,7 +221,8 @@ fun HomeScreen(
             )
         },
     ) { padding ->
-        // 内容区（不含顶栏）作为顶栏模糊的捕获源
+        // 内容区（不含顶栏）作为顶栏模糊的捕获源；padding.calculateTopPadding() 即顶栏高度，
+        // 第一个 item（刷新行）物理上位于顶栏下方正文区，绝不被顶栏遮挡
         Box(
             Modifier
                 .fillMaxSize()
@@ -239,22 +243,12 @@ fun HomeScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    // 刷新行：顶栏下面、粘贴链接上面（刷新图标靠右）
+                    // 信息结构：顶栏 → 刷新图标 → 搜索框 → 三条杠 → 粘贴链接 → 一键刷今日 → 列表
                     item(key = "refresh_row") {
                         RefreshRow(
                             dateFilter = dateFilter,
                             subjectFilter = subjectFilter,
                             onRefresh = { vm.load(force = true) },
-                        )
-                    }
-                    item(key = "link") {
-                        LinkQueryEntry(onClick = onOpenLinkQuery)
-                    }
-                    item(key = "brush_today") {
-                        BrushTodayEntry(
-                            brushing = brushing,
-                            progress = brushProgress,
-                            onClick = { showBrushDialog = true },
                         )
                     }
                     item(key = "search") {
@@ -265,7 +259,7 @@ fun HomeScreen(
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
-                    // 三条杠：搜索框下边靠右（弹层从按钮旁生长）
+                    // 三条杠：搜索框下边靠右（弹层从按钮旁 Morph 生长）
                     item(key = "filter_row") {
                         FilterRow(
                             dateFilter = dateFilter,
@@ -278,6 +272,16 @@ fun HomeScreen(
                                 vm.setDateFilter(null)
                                 vm.setSubjectFilter(null)
                             },
+                        )
+                    }
+                    item(key = "link") {
+                        LinkQueryEntry(onClick = onOpenLinkQuery)
+                    }
+                    item(key = "brush_today") {
+                        BrushTodayEntry(
+                            brushing = brushing,
+                            progress = brushProgress,
+                            onClick = { showBrushDialog = true },
                         )
                     }
 
@@ -395,7 +399,7 @@ fun HomeScreen(
     }
 }
 
-// ── 刷新行（顶栏下面 / 粘贴链接上面） ────────────────────────────
+// ── 刷新行（顶栏下面 / 搜索框上面） ────────────────────────────
 
 @Composable
 private fun RefreshRow(
@@ -428,7 +432,7 @@ private fun RefreshRow(
     }
 }
 
-// ── 三条杠 + 锚点弹层（从按钮“生长”出来） ───────────────────────
+// ── 三条杠 + 锚点弹层（Circle → Capsule → Dialog 连续 Morph） ───
 
 @Composable
 private fun FilterRow(
@@ -505,15 +509,17 @@ private fun FilterRow(
 private enum class FilterPane { Main, Date, Subject }
 
 /**
- * 三条杠弹层（MIUIX 锚点生长动效）：
+ * 三条杠弹层 —— Circle → Capsule → Dialog 连续 Morph：
  *
  * 打开：
- *  1. 容器从弹层右上角（三条杠所在侧）非对称展开（scaleX 0.92 / scaleY 0.88 → 1，260ms 减速曲线），
- *     圆角从 28dp 收敛到 20dp，极小位移修正 6dp→0，alpha 同步。
- *  2. 容器展开约 70% 后内容浮现：alpha 0→1 + 上移 6dp→0（160ms）。
- *  关闭：内容先快速淡出（100ms），容器再向锚点收缩（200ms，加速曲线，略快于展开），自然收回。
+ *  1. 按钮点击处出现一个小圆（48dp、正圆 24dp 圆角）
+ *  2. 同一个 Surface 连续延展：宽度/高度同时增长（48→280 / 48→344），
+ *     圆角 24→20 连续变化 → 圆 → 胶囊 → 圆角对话框，全程 Morph，非两个 View 切换
+ *  3. 曲线 CubicBezier(0.2, 0, 0, 1)：起步迅速 → 中段持续展开 → 尾部柔和减速
+ *  4. 内容在容器展开约 75% 后浮现（alpha + 上移 6dp）
+ *  关闭：内容先快速消失 → 同一个 Surface 反向 Morph 收回小圆（略快），回到按钮附近
  *
- * 不使用 overshoot / bounce / 果冻回弹；视觉来源始终锚定在三条杠按钮。
+ * Alpha 仅轻微辅助（0.75→1）；TransformOrigin 固定在右上角（按钮侧），视觉来源始终是三条杠。
  */
 @Composable
 private fun FilterPopupCard(
@@ -535,64 +541,62 @@ private fun FilterPopupCard(
     val dateOptions = remember(dates) { listOf<String?>(null) + dates }
     val subjectOptions = remember(subjects) { listOf<String?>(null) + subjects }
 
-    // 容器展开（进入）
-    val openProgress = remember { Animatable(0f) }
-    // 内容浮现（进入，容器展开约 70% 后启动）
+    // Morph 进度：0 = 按钮旁小圆，1 = 完整对话框
+    val morph = remember { Animatable(0f) }
+    // 内容浮现（进入，容器展开约 75% 后启动）
     val contentProgress = remember { Animatable(0f) }
-    // 内容淡出（关闭第一步）
+    // 内容退场（关闭第一步）
     val exitContent = remember { Animatable(0f) }
-    // 容器向锚点收缩（关闭第二步）
-    val exitScale = remember { Animatable(0f) }
 
-    // 进入：容器主要尺寸展开（快速响应 → 连续展开 → 柔和减速 → 稳定停下）
+    val morphEase = CubicBezierEasing(0.2f, 0f, 0f, 1f)
+
+    // 打开：小圆 → 胶囊 → 对话框（连续 Morph，尺寸 + 圆角同源同曲线）
     LaunchedEffect(Unit) {
         if (!exiting) {
-            openProgress.animateTo(1f, tween(260, easing = LinearOutSlowInEasing))
+            morph.animateTo(1f, tween(300, easing = morphEase))
         }
     }
-    // 进入：容器展开约 70% 后，内容轻柔浮现
+    // 打开：容器接近稳定（约 75%）后内容轻柔浮现
     LaunchedEffect(Unit) {
         if (!exiting) {
-            delay(150)
-            contentProgress.animateTo(1f, tween(160, easing = LinearOutSlowInEasing))
+            delay(220)
+            contentProgress.animateTo(1f, tween(150, easing = LinearOutSlowInEasing))
         }
     }
-    // 关闭：内容先淡出 → 容器向锚点收缩 → 完成回调移除
+    // 关闭：内容先快速消失 → 同一 Surface 反向 Morph 收回小圆（略快于打开）
     LaunchedEffect(exiting) {
         if (exiting) {
-            exitContent.animateTo(1f, tween(100, easing = LinearOutSlowInEasing))
-            exitScale.animateTo(1f, tween(200, easing = FastOutLinearInEasing))
+            exitContent.animateTo(1f, tween(90, easing = LinearOutSlowInEasing))
+            morph.animateTo(0f, tween(220, easing = FastOutLinearInEasing))
             onExitFinished()
         }
     }
 
-    val open = openProgress.value
-    val close = exitScale.value
+    val p = morph.value
+    // 尺寸连续变化：小圆(48×48) → 对话框(280×344)；圆角：24 → 20（始终 ≤ 宽/2，保持胶囊→圆角矩形）
+    val w = lerp(48.dp, 280.dp, p)
+    val h = lerp(48.dp, 344.dp, p)
+    val corner = lerp(24.dp, 20.dp, p)
     val contentAlpha = (contentProgress.value * (1f - exitContent.value)).coerceIn(0f, 1f)
-    // 圆角：从稍大（28dp）逐渐稳定到 20dp
-    val corner = lerp(28.dp, 20.dp, open)
 
     Card(
         modifier = Modifier
-            .width(280.dp)
-            .height(344.dp)
+            .width(w)
+            .height(h)
+            .clip(RoundedCornerShape(corner))
             .graphicsLayer {
-                // Origin 固定在弹层右上角（靠近三条杠）：从按钮“生长”/“收回”
+                // Origin 固定在弹层右上角（三条杠所在侧）：从小圆“长成”对话框 / “收回”小圆
                 transformOrigin = TransformOrigin(1f, 0f)
-                // 非对称尺寸变化：横向起点 0.92、纵向起点 0.88
-                scaleX = (0.92f + 0.08f * open) * (1f - 0.16f * close)
-                scaleY = (0.88f + 0.12f * open) * (1f - 0.16f * close)
-                alpha = (open * (1f - close)).coerceIn(0f, 1f)
-                // 极小位移修正：展开时轻微下移归位
-                translationY = (1f - open) * 6f.dp.toPx()
+                // Alpha 仅轻微辅助，主体是 Shape Morph
+                alpha = (0.75f + 0.25f * p).coerceIn(0f, 1f)
             },
         cornerRadius = corner,
         insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
     ) {
-        // 内容层：与容器分阶段，容器展开到约 70% 后浮现（alpha + 上移 6dp）
+        // 内容层：与容器分阶段，容器接近稳定后浮现
         Column(
             Modifier
-                .fillMaxHeight()
+                .fillMaxSize()
                 .graphicsLayer {
                     alpha = contentAlpha
                     translationY = (1f - contentAlpha) * 6f.dp.toPx()
@@ -608,9 +612,9 @@ private fun FilterPopupCard(
                         )
                 },
                 label = "filter_pane",
-            ) { p ->
-                Column(Modifier.fillMaxHeight()) {
-                    when (p) {
+            ) { p2 ->
+                Column(Modifier.fillMaxSize()) {
+                    when (p2) {
                         FilterPane.Main -> {
                             Text(
                                 text = "筛选",
