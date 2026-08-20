@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-/** 主页：试卷列表 + 链接查询 + 日期/学科筛选 + 搜索 + 一键刷今日 */
+/** 主页：试卷列表 + 链接查询 + 日期/学科筛选（顶栏三杠弹窗）+ 搜索 + 一键刷今日（未完工） */
 class HomeViewModel(private val repo: EwtRepository) : ViewModel() {
 
     sealed interface UiState {
@@ -65,8 +65,8 @@ class HomeViewModel(private val repo: EwtRepository) : ViewModel() {
         }
     }
 
-    /** 一键刷今天所有试卷（打开 → 答案 → 提交 → 交卷自批），按整卷目标正确率分配主观题得分 */
-    fun brushToday(targetRate: Int, onProgress: (String) -> Unit, onDone: (String) -> Unit) {
+    /** 一键刷今天所有试卷（预留给正式版；当前入口未开放仅提示） */
+    fun brushToday(onProgress: (String) -> Unit, onDone: (String) -> Unit) {
         if (_brushing.value) return
         viewModelScope.launch {
             _brushing.value = true
@@ -82,11 +82,11 @@ class HomeViewModel(private val repo: EwtRepository) : ViewModel() {
                     onDone("今天（$today）没有可刷的试卷")
                     return@launch
                 }
-                val sb = StringBuilder("今日刷卷（$today，目标正确率 $targetRate%）共 ${papers.size} 张：")
+                val sb = StringBuilder("今日刷卷（$today）共 ${papers.size} 张：")
                 papers.forEachIndexed { i, p ->
                     onProgress("刷卷 ${i + 1}/${papers.size}：${p.title}")
                     try {
-                        repo.brushPaper(p, targetRate) { onProgress("刷卷 ${i + 1}/${papers.size}：$it") }
+                        repo.brushPaper(p) { onProgress("刷卷 ${i + 1}/${papers.size}：$it") }
                         sb.append("\n✓ ").append(p.title)
                     } catch (e: Exception) {
                         sb.append("\n✗ ").append(p.title).append("：").append(e.message)

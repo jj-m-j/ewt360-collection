@@ -1,5 +1,6 @@
 package com.ewt.answer.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,8 +29,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,15 +68,18 @@ import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
 
-/** 解析“80-90 / 80~90 / 80至90”目标正确率区间；非法返回 null */
-private fun parseRateRange(input: String): IntRange? {
-    val m = Regex("""^\s*(\d{1,3})\s*[-~～至]\s*(\d{1,3})\s*$""").find(input.trim()) ?: return null
-    val a = m.groupValues[1].toIntOrNull() ?: return null
-    val b = m.groupValues[2].toIntOrNull() ?: return null
-    val lo = minOf(a, b).coerceIn(0, 100)
-    val hi = maxOf(a, b).coerceIn(0, 100)
-    if (hi <= 0) return null
-    return lo..hi
+/** 筛选图标（三条横线，material filter_list） */
+private val FilterListIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "FilterList",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).addPath(
+        pathData = addPathNodes("M24,10H0V12H24V10ZM24,6H0V8H24V6ZM0,16H24V14H0V16Z"),
+        fill = SolidColor(Color.Black),
+    ).build()
 }
 
 @Composable
@@ -91,17 +99,10 @@ fun HomeScreen(
     val searchQuery by vm.searchQuery.collectAsState()
     val brushing by vm.brushing.collectAsState()
 
-    var brushConfirm by remember { mutableStateOf(false) }
-    var brushProgress by remember { mutableStateOf<String?>(null) }
-    var brushResult by remember { mutableStateOf<String?>(null) }
-    // 一键刷今日：功能未完工标记（点击仅提示）
     var showNotReady by remember { mutableStateOf(false) }
+    var showFilterDialog by remember { mutableStateOf(false) }
 
-    // 刷今日目标正确率区间（提交前弹窗输入，自定义）
-    val brushRateState = remember { TextFieldState() }
-
-    // 顶栏独立 backdrop：只捕获 Scaffold 内容区（列表），不含顶栏自身 ——
-    // 若采样含顶栏的整页层，RenderNode 成环，hwui prepareTreeImpl 无限递归（原生崩溃）
+    // 顶栏独立 backdrop：只捕获 Scaffold 内容区（列表），不含顶栏自身 —— 避免 RenderNode 循环引用崩溃
     val topBarBackdrop = rememberLayerBackdrop()
     val glassSurface = MiuixTheme.colorScheme.surface
 
@@ -126,7 +127,6 @@ fun HomeScreen(
             TopAppBar(
                 title = "试卷列表",
                 subtitle = userInfo?.realName?.let { "你好，$it" } ?: "",
-                // 与列表内容 16dp 左对齐；顶栏滚动折叠保持上一版样式
                 titlePadding = 16.dp,
                 // 液态玻璃顶栏：模糊内容层（Android 12+），低版本降级为半透明底色
                 modifier = Modifier.drawBackdrop(
@@ -139,11 +139,37 @@ fun HomeScreen(
                 ),
                 color = Color.Transparent,
                 scrollBehavior = scrollBehavior,
+                actions = {
+                    // 当前筛选条件显示在三杠图标旁边
+                    val conds = listOfNotNull(dateFilter, subjectFilter)
+                    if (conds.isNotEmpty()) {
+                        Box(
+                            Modifier
+                                .padding(end = 4.dp)
+                                .clip(CircleShape)
+                                .background(MiuixTheme.colorScheme.primary.copy(alpha = 0.12f))
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                        ) {
+                            Text(
+                                text = conds.joinToString(" · "),
+                                fontSize = 11.sp,
+                                color = MiuixTheme.colorScheme.primary,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                    IconButton(onClick = { showFilterDialog = true }) {
+                        Icon(
+                            imageVector = FilterListIcon,
+                            contentDescription = "筛选",
+                            tint = MiuixTheme.colorScheme.primary,
+                        )
+                    }
+                },
             )
         },
     ) { padding ->
-        // 内容区（不含顶栏）作为顶栏模糊的捕获源；
-        // 下拉刷新指示器不绑定顶栏 → 显示在列表顶部（顶栏下方、粘贴链接上方）
+        // 内容区（不含顶栏）作为顶栏模糊的捕获源；刷新指示器显示在列表顶部（粘贴链接上方）
         Box(
             Modifier
                 .fillMaxSize()
@@ -203,7 +229,6 @@ fun HomeScreen(
                     item(key = "brush_today") {
                         BrushTodayEntry(
                             brushing = brushing,
-                            // 未正式上线：点击仅提示
                             onClick = { showNotReady = true },
                         )
                     }
@@ -264,27 +289,6 @@ fun HomeScreen(
                             }
                         }
                         is HomeViewModel.UiState.Ready -> {
-                            if (dates.isNotEmpty()) {
-                                item(key = "date_filter") {
-                                    FilterRow(
-                                        label = "日期",
-                                        options = dates,
-                                        selected = dateFilter,
-                                        onSelect = { vm.setDateFilter(it) },
-                                    )
-                                }
-                            }
-                            if (subjects.isNotEmpty()) {
-                                item(key = "subject_filter") {
-                                    FilterRow(
-                                        label = "学科",
-                                        options = subjects,
-                                        selected = subjectFilter,
-                                        onSelect = { vm.setSubjectFilter(it) },
-                                    )
-                                }
-                            }
-
                             if (dateGroups.isEmpty()) {
                                 item(key = "filtered_empty") {
                                     EmptyHint("当前筛选 / 搜索条件下没有任务")
@@ -306,6 +310,66 @@ fun HomeScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // 筛选弹窗（三杠）：日期 + 学科 chips，选中条件同步到顶栏三杠旁
+    if (showFilterDialog) {
+        val readyGroups = (uiState as? HomeViewModel.UiState.Ready)?.groups
+        val allPapers = remember(readyGroups) { readyGroups?.flatMap { it.papers } ?: emptyList() }
+        val dates = remember(allPapers) {
+            allPapers.mapNotNull { it.date.takeIf { d -> d.isNotBlank() } }
+                .distinct().sortedDescending()
+        }
+        val subjects = remember(allPapers) {
+            allPapers.mapNotNull { it.subjectName.takeIf { s -> s.isNotBlank() } }
+                .distinct().sorted()
+        }
+        WindowDialog(
+            show = true,
+            title = "筛选",
+            summary = "选择日期与学科条件",
+            onDismissRequest = { showFilterDialog = false },
+        ) {
+            Column {
+                Text("日期", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Spacer(Modifier.height(6.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item { FilterChip(text = "全部", selected = dateFilter == null) { vm.setDateFilter(null) } }
+                    items(dates) { opt -> FilterChip(text = opt, selected = dateFilter == opt) { vm.setDateFilter(opt) } }
+                }
+                Spacer(Modifier.height(14.dp))
+                Text("学科", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = MiuixTheme.colorScheme.onSurfaceVariantSummary)
+                Spacer(Modifier.height(6.dp))
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    item { FilterChip(text = "全部", selected = subjectFilter == null) { vm.setSubjectFilter(null) } }
+                    items(subjects) { opt -> FilterChip(text = opt, selected = subjectFilter == opt) { vm.setSubjectFilter(opt) } }
+                }
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        text = "清除",
+                        onClick = {
+                            vm.setDateFilter(null)
+                            vm.setSubjectFilter(null)
+                        },
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Button(
+                        onClick = { showFilterDialog = false },
+                        colors = ButtonDefaults.buttonColors(
+                            color = MiuixTheme.colorScheme.primary,
+                            contentColor = MiuixTheme.colorScheme.onPrimary,
+                        ),
+                    ) {
+                        Text("确定", fontSize = 14.sp)
                     }
                 }
             }
@@ -334,55 +398,6 @@ fun HomeScreen(
                 ) {
                     Button(
                         onClick = { showNotReady = false },
-                        colors = ButtonDefaults.buttonColors(
-                            color = MiuixTheme.colorScheme.primary,
-                            contentColor = MiuixTheme.colorScheme.onPrimary,
-                        ),
-                    ) {
-                        Text("知道了", fontSize = 14.sp)
-                    }
-                }
-            }
-        }
-    }
-
-    // 刷卷进度对话框（预留）
-    if (brushProgress != null && brushResult == null) {
-        WindowDialog(
-            show = true,
-            title = "刷卷中…",
-            onDismissRequest = {},
-        ) {
-            Column {
-                Text(
-                    text = brushProgress.orEmpty(),
-                    fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
-                )
-            }
-        }
-    }
-    // 刷卷结果对话框（预留）
-    if (brushResult != null) {
-        WindowDialog(
-            show = true,
-            title = "刷卷完成",
-            onDismissRequest = { brushResult = null },
-        ) {
-            Column {
-                Text(
-                    text = brushResult.orEmpty(),
-                    fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
-                )
-                Spacer(Modifier.height(14.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Button(
-                        onClick = { brushResult = null },
                         colors = ButtonDefaults.buttonColors(
                             color = MiuixTheme.colorScheme.primary,
                             contentColor = MiuixTheme.colorScheme.onPrimary,
@@ -429,35 +444,6 @@ private fun BrushTodayEntry(brushing: Boolean, onClick: () -> Unit) {
                 contentDescription = "刷今日试卷",
                 tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
             )
-        }
-    }
-}
-
-/** 筛选行：标签 + 选项 chips（横向滚动） */
-@Composable
-private fun FilterRow(
-    label: String,
-    options: List<String>,
-    selected: String?,
-    onSelect: (String?) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            modifier = Modifier.padding(end = 8.dp),
-        )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            item { FilterChip(text = "全部", selected = selected == null) { onSelect(null) } }
-            items(options) { opt ->
-                FilterChip(text = opt, selected = selected == opt) { onSelect(opt) }
-            }
         }
     }
 }
