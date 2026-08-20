@@ -1,18 +1,5 @@
 package com.ewt.answer.ui
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,7 +7,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -54,6 +40,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -81,12 +68,14 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.NumberPicker
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -159,10 +148,6 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { vm.load() }
 
-    // ── 滚动收缩进度（共享组件统一计算） ──
-    val collapseDistance = with(LocalDensity.current) { 64.dp.toPx() }
-    val collapseProgress by rememberCollapseProgress(listState, collapseDistance)
-
     // ── 筛选计算 ──
     val readyGroups = (uiState as? HomeViewModel.UiState.Ready)?.groups
     val allPapers = remember(readyGroups) { readyGroups?.flatMap { it.papers } ?: emptyList() }
@@ -202,14 +187,25 @@ fun HomeScreen(
         if (fromPapers.isNotEmpty()) fromPapers else recentDays(7)
     }
 
+    // build174 同款：miuix 原生 TopAppBar + 上滑收缩（MiuixScrollBehavior）
+    val scrollBehavior = MiuixScrollBehavior()
+
     Scaffold(
         topBar = {
-            CollapsingHeaderBar(
+            TopAppBar(
                 title = "试卷列表",
-                subtitle = userInfo?.realName?.let { "你好，$it" },
-                progress = collapseProgress,
-                backdrop = topBarBackdrop,
-                glassSurface = glassSurface,
+                subtitle = userInfo?.realName?.let { "你好，$it" } ?: "",
+                titlePadding = 16.dp,
+                modifier = Modifier.drawBackdrop(
+                    backdrop = topBarBackdrop,
+                    shape = { RectangleShape },
+                    effects = { blur(10f.dp.toPx()) },
+                    onDrawSurface = {
+                        drawRect(glassSurface.copy(alpha = 0.62f))
+                    },
+                ),
+                color = Color.Transparent,
+                scrollBehavior = scrollBehavior,
             )
         },
     ) { padding ->
@@ -220,7 +216,9 @@ fun HomeScreen(
         ) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection),
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
