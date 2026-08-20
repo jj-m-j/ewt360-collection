@@ -19,7 +19,6 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -40,7 +39,6 @@ import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -59,7 +57,6 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -73,7 +70,6 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.UserInfo
-import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
@@ -167,16 +163,9 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { vm.load() }
 
-    // ── 滚动收缩进度：基于列表滚动距离连续插值（非阈值切换） ──
-    // with(LocalDensity.current) { dp.toPx() } —— miuix Surface 同款写法（Dp.toPx 无参成员扩展）
+    // ── 滚动收缩进度：基于列表滚动距离连续插值（共享组件统一计算） ──
     val collapseDistance = with(LocalDensity.current) { 64.dp.toPx() }
-    val collapseProgress by remember(listState) {
-        derivedStateOf {
-            val info = listState.layoutInfo
-            val first = info.visibleItemsInfo.firstOrNull() ?: return@derivedStateOf 0f
-            if (first.index > 0) 1f else (-first.offset / collapseDistance).coerceIn(0f, 1f)
-        }
-    }
+    val collapseProgress by rememberCollapseProgress(listState, collapseDistance)
 
     // ── 筛选计算（基于已加载试卷） ──
     val readyGroups = (uiState as? HomeViewModel.UiState.Ready)?.groups
@@ -220,10 +209,11 @@ fun HomeScreen(
 
     Scaffold(
         topBar = {
-            // 自定义滚动收缩 Header：LiquidGlass 材质完全保留，只动容器尺寸与内部布局
-            CollapsingHeader(
+            // 共享液态玻璃滚动收缩顶栏（与课程页统一）
+            CollapsingHeaderBar(
+                title = "试卷列表",
+                subtitle = userInfo?.realName?.let { "你好，$it" },
                 progress = collapseProgress,
-                userInfo = userInfo,
                 backdrop = topBarBackdrop,
                 glassSurface = glassSurface,
             )
@@ -403,77 +393,6 @@ fun HomeScreen(
                         Text("知道了", fontSize = 14.sp)
                     }
                 }
-            }
-        }
-    }
-}
-
-// ── 滚动收缩 Header（LiquidGlass 材质保留，容器与内部布局可动） ─────
-
-@Composable
-private fun CollapsingHeader(
-    progress: Float,
-    userInfo: UserInfo?,
-    backdrop: LayerBackdrop,
-    glassSurface: Color,
-) {
-    val headerHeight = lerp(92.dp, 52.dp, progress)
-    val titleSize = lerp(26.sp, 17.sp, progress)
-    val density = LocalDensity.current
-
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(headerHeight)
-            // LiquidGlass 材质与底部同源：blur 10dp + surface 62%（完全保留）
-            .drawBackdrop(
-                backdrop = backdrop,
-                shape = { RectangleShape },
-                effects = { blur(10f.dp.toPx()) },
-                onDrawSurface = {
-                    drawRect(glassSurface.copy(alpha = 0.62f))
-                },
-            ),
-    ) {
-        // px 换算全部在 composable 作用域预计算（miuix 同款 with(density){dp.toPx()}），graphicsLayer 只引用 Float
-        val containerW = with(density) { maxWidth.toPx() }
-        val offset16Px = with(density) { 16.dp.toPx() }
-        val offset8Px = with(density) { 8.dp.toPx() }
-        var columnW by remember { mutableIntStateOf(0) }
-        Box(
-            Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier
-                    .onSizeChanged { columnW = it.width }
-                    .graphicsLayer {
-                        // progress=0 时标题区位于左侧 16dp；progress=1 时水平居中（连续插值）
-                        translationX = (1f - progress) * -(containerW / 2f - offset16Px - columnW / 2f)
-                    },
-            ) {
-                Text(
-                    text = "试卷列表",
-                    fontSize = titleSize,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                )
-                Spacer(Modifier.height(lerp(4.dp, 0.dp, progress)))
-                // 问候语：随滚动淡出 + 上移 8dp + 轻微缩小（始终占位保证标题垂直稳定）
-                Text(
-                    text = userInfo?.realName?.let { "你好，$it" } ?: "",
-                    fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    maxLines = 1,
-                    modifier = Modifier.graphicsLayer {
-                        alpha = 1f - progress
-                        translationY = -offset8Px * progress
-                        scaleX = 1f - 0.04f * progress
-                        scaleY = 1f - 0.04f * progress
-                    },
-                )
             }
         }
     }
