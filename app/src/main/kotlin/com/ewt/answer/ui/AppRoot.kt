@@ -13,15 +13,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyListState
@@ -38,19 +35,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ewt.answer.data.AppContainer
 import com.ewt.answer.data.EwtRepository
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.UserInfo
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
@@ -420,7 +415,7 @@ private fun RenderScreen(
     }
 }
 
-/** 主层：页面内容 + Miuix 风格悬浮底栏（半透明胶囊，无玻璃效果） */
+/** 主层：页面内容（作为液态玻璃 backdrop 源）+ 液态玻璃悬浮底栏 */
 @Composable
 private fun MainLayer(
     userInfo: UserInfo?,
@@ -437,10 +432,15 @@ private fun MainLayer(
     onOpenDebug: () -> Unit,
     onLogout: () -> Unit,
 ) {
+    // 玻璃底栏的反射源：捕获整个 Tab 内容（列表滚动画面）
+    val backdrop = rememberLayerBackdrop()
+
     Box(Modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = tab,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .layerBackdrop(backdrop),
             transitionSpec = {
                 fadeIn(tween(180)).togetherWith(fadeOut(tween(120)))
             },
@@ -466,72 +466,21 @@ private fun MainLayer(
                 )
             }
         }
-        // Miuix 风格悬浮底栏（半透明胶囊）
-        MiuixFloatingBar(
-            tab = tab,
-            onTabSelect = onTabSelect,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        )
-    }
-}
-
-/** Miuix 风格悬浮底栏：半透明胶囊 + 选中高亮 */
-@Composable
-private fun MiuixFloatingBar(
-    tab: Int,
-    onTabSelect: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val surface = MiuixTheme.colorScheme.surface
-    Box(
-        modifier
-            .navigationBarsPadding()
-            .padding(horizontal = 24.dp, vertical = 10.dp)
-            .shadow(6.dp, RoundedCornerShape(50.dp), clip = false)
-            .height(52.dp)
-            .clip(RoundedCornerShape(50.dp))
-            .background(surface.copy(alpha = 0.92f)),
-    ) {
-        Row(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 8.dp),
-        ) {
-            MiuixBarItem(
-                text = "试卷",
-                selected = tab == TAB_PAPERS,
-                onClick = { onTabSelect(TAB_PAPERS) },
-                modifier = Modifier.weight(1f),
-            )
-            MiuixBarItem(
-                text = "关于",
-                selected = tab == TAB_ABOUT,
-                onClick = { onTabSelect(TAB_ABOUT) },
-                modifier = Modifier.weight(1f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun MiuixBarItem(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier
-            .fillMaxSize()
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            fontSize = 15.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            textAlign = TextAlign.Center,
+        // 液态玻璃悬浮底栏（全宽胶囊：实时模糊 + 折射 + 可拖动内胆）
+        LiquidGlassBottomBar(
+            tabs = listOf(
+                LiquidGlassTab(icon = PaperTabIcon, label = "试卷"),
+                LiquidGlassTab(icon = AboutTabIcon, label = "关于"),
+            ),
+            selectedTabIndex = { tab },
+            onTabSelected = onTabSelect,
+            backdrop = backdrop,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(start = 24.dp, end = 24.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 12.dp),
         )
     }
 }
