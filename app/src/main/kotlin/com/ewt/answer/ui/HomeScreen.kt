@@ -208,12 +208,12 @@ fun HomeScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            // 大标题行（随列表滚动，参考 miuix 原生大标题样式）+ 右侧刷新
+            // 大标题行（miuix 原生排版：左右 26dp 边距、下方留白）+ 右侧刷新
             item(key = "large_title") {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 6.dp),
+                        .padding(start = 10.dp, end = 0.dp, top = 4.dp, bottom = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
