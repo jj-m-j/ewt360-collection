@@ -447,6 +447,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
      * 提交整卷答案并交卷自批。
      * @param targetRate 整卷目标正确率 0-100：客观题由系统阅卷必对；
      *   主观题按“对 100% / 半对 50% / 错 0%”分配，使整卷正确率尽量落在目标率。
+     * 交卷自批后尽力查询本次得分并附加到结果文案。
      */
     suspend fun submitPaperAnswers(
         paper: Paper,
@@ -526,8 +527,48 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         }
         EwtEndpoints.submitPaper(paper.paperId, reportId, EwtApi.PLATFORM, biz)
         EwtEndpoints.submitCorrected(paper.paperId, reportId, EwtApi.PLATFORM, biz)
-        return "已提交：客观题 ${sel.size} 题（系统阅卷），主观题 对 $full / 半对 $half / 错 $miss，目标整卷正确率 $rate%，并完成交卷自批"
+
+        // 3. 交卷自批后尽力查询本次得分（字段名随接口版本变化，多候选探测；失败不影响提交结果）
+        val scoreText = runCatching {
+            val base = EwtEndpoints.getUserBaseInfo().optObj("data")
+            val userId = base?.str("userId").orEmpty()
+            val res = EwtEndpoints.getAnswerSheetInfo(paper.paperId, reportId, EwtApi.PLATFORM, biz, userId)
+            res.optObj("data")?.extractScoreText()
+        }.getOrNull()
+
+        return "已提交：客观题 ${sel.size} 题（系统阅卷），主观题 对 $full / 半对 $half / 错 $miss，目标整卷正确率 $rate%" +
+            (if (scoreText != null) "，本次得分 $scoreText" else "") +
+            "，并完成交卷自批"
     }
+
+    /** 从报告信息中尽力提取得分文本（顶层字段 / 子对象 / 逐题求和） */
+    private fun JsonObject.extractScoreText(): String? {
+        val topKeys = listOf("score", "totalScore", "myScore", "answerScore", "realScore", "scoreText", "finalScore", "selfScore", "scoreDetail")
+        for (k in topKeys) {
+            val v = this[k]
+            val s = when (v) {
+                is JsonPrimitive -> v.contentOrNull
+                is JsonObject -> v.str("score") ?: v.str("value") ?: v.str("text") ?: v.str("total")
+                else -> null
+            }
+            if (!s.isNullOrBlank() && s != "0" && s != "0.0") {
+                return s
+            }
+        }
+        // 逐题求和：questionInfoList 每项 score / fullScore
+        optArr("questionInfoList")?.let { list ->
+            val items = list.mapNotNull { it as? JsonObject }
+            val gained = items.sumOf { it.doubleOr("score", 0.0) }
+            val full = items.sumOf { it.doubleOr("fullScore", 0.0) }
+            if (gained > 0) {
+                return if (full > 0) "${formatScore(gained)} / ${formatScore(full)}" else formatScore(gained)
+            }
+        }
+        return null
+    }
+
+    private fun formatScore(v: Double): String =
+        if (v % 1.0 == 0.0) v.toInt().toString() else String.format("%.1f", v)
 
     /** 一键刷单卷：打开 → 题目 → 解锁 → 逐题答案 → 提交（带进度回调） */
     suspend fun brushPaper(
