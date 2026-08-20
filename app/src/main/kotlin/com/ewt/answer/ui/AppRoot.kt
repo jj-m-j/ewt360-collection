@@ -436,13 +436,18 @@ private fun MainLayer(
     onOpenDebug: () -> Unit,
     onLogout: () -> Unit,
 ) {
-    // 捕获 Tab 内容（全屏，含底栏区域），供底栏 Backdrop 实时模糊
-    val tabsBackdrop = rememberLayerBackdrop()
+    // 捕获 Tab 内容（全屏，含底栏区域），供底栏 Backdrop 实时模糊。
+    // 先把背景色画进快照（官方教程 Step 2：防止底栏背后透明像素）
+    val backgroundColor = MiuixTheme.colorScheme.background
+    val tabsBackdrop = rememberLayerBackdrop {
+        drawRect(backgroundColor)
+        drawContent()
+    }
 
     Box(Modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = tab,
-            // 快照必须覆盖全屏（含底栏区域），底部间距由各页面列表 contentPadding 处理
+            // 快照覆盖全屏（含底栏区域），底部间距由各页面列表 contentPadding 处理
             modifier = Modifier
                 .fillMaxSize()
                 .layerBackdrop(tabsBackdrop),
