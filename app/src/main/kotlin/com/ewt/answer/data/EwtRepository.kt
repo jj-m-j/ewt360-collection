@@ -8,7 +8,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
-import kotlin.random.Random
 
 /**
  * 仓库层：组合 EWT-TOOL-main（扫描/刷卷）、ewt-getanwser.js（答案）、opt.js（课后习题扫描 + 混合题型）能力。
@@ -446,19 +445,21 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     /**
      * 提交整卷答案并交卷自批。
-     * @param accuracy 主观题满分率 0-100：客观题系统批改；主观题按比例分配 满分(100%) / 半对(50%) / 错(0%)
+     * @param targetRate 整卷目标正确率 0-100：客观题由系统阅卷必对；
+     *   主观题按“对 100% / 半对 50% / 错 0%”分配，使整卷正确率尽量落在目标率。
      */
     suspend fun submitPaperAnswers(
         paper: Paper,
         questions: List<QuestionItem>,
         answers: Map<String, QuestionAnswer>,
-        accuracy: Int = 100,
+        targetRate: Int = 90,
     ): String {
         val biz = paper.bizCode
         val reportId = initSubmitReportId(paper, biz)
 
+        // 1. 收集客观题（纯字母答案，系统阅卷必对）
         val sel = mutableListOf<JsonObject>()
-        val notSel = mutableListOf<JsonObject>()
+        val subjective = mutableListOf<Pair<QuestionItem, QuestionAnswer>>()
         for (q in questions) {
             val a = answers[q.questionId] ?: continue
             val opts = a.choiceAnswers
@@ -473,27 +474,46 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                     },
                 )
             } else {
-                // 非选择题 / 复合题父题：按准确率分配得分（满分/半对/错）
-                val acc = accuracy.coerceIn(0, 100)
-                val r = Random.nextFloat() * 100f
-                val score = when {
-                    r < acc -> q.score
-                    r < acc + (100f - acc) / 2f -> q.score * 0.5
-                    else -> 0.0
-                }
-                notSel.add(
-                    buildJsonObject {
-                        put("questionId", q.questionId)
-                        put("questionNo", q.questionNumber.toIntOrNull() ?: 0)
-                        put("totalSeconds", 50)
-                        put("cateId", q.cateId)
-                        put("answers", JsonArray(listOf(JsonPrimitive(1))))
-                        put("attachmentImages", JsonArray(emptyList()))
-                        put("score", score)
-                        put("revision", true)
-                    },
-                )
+                subjective.add(q to a)
             }
+        }
+
+        // 2. 需要主观题贡献的“对题当量”：目标整卷正确题数 - 客观题必对数
+        val rate = targetRate.coerceIn(0, 100)
+        var need = questions.size * rate / 100f - sel.size
+        var full = 0
+        var half = 0
+        var miss = 0
+        val notSel = mutableListOf<JsonObject>()
+        for ((q, _) in subjective) {
+            val ratio = when {
+                need >= 1f -> {
+                    need -= 1f
+                    full++
+                    1.0
+                }
+                need >= 0.3f -> {
+                    need -= 0.5f
+                    half++
+                    0.5
+                }
+                else -> {
+                    miss++
+                    0.0
+                }
+            }
+            notSel.add(
+                buildJsonObject {
+                    put("questionId", q.questionId)
+                    put("questionNo", q.questionNumber.toIntOrNull() ?: 0)
+                    put("totalSeconds", 50)
+                    put("cateId", q.cateId)
+                    put("answers", JsonArray(listOf(JsonPrimitive(1))))
+                    put("attachmentImages", JsonArray(emptyList()))
+                    put("score", q.score * ratio)
+                    put("revision", true)
+                },
+            )
         }
         if (sel.isEmpty() && notSel.isEmpty()) {
             throw EwtException("未获取到任何有效答案，已禁止提交空卷")
@@ -506,13 +526,13 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         }
         EwtEndpoints.submitPaper(paper.paperId, reportId, EwtApi.PLATFORM, biz)
         EwtEndpoints.submitCorrected(paper.paperId, reportId, EwtApi.PLATFORM, biz)
-        return "已提交：选择题 ${sel.size} 题，非选择题 ${notSel.size} 题（主观准确率 $accuracy%），并完成交卷自批"
+        return "已提交：客观题 ${sel.size} 题（系统阅卷），主观题 对 $full / 半对 $half / 错 $miss，目标整卷正确率 $rate%，并完成交卷自批"
     }
 
     /** 一键刷单卷：打开 → 题目 → 解锁 → 逐题答案 → 提交（带进度回调） */
     suspend fun brushPaper(
         paper: Paper,
-        accuracy: Int = 100,
+        targetRate: Int = 90,
         onProgress: (String) -> Unit = {},
     ): String {
         onProgress("初始化：${paper.title}")
@@ -526,7 +546,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
             fetchAnswer(session, q)?.let { answers[q.questionId] = it }
         }
         onProgress("提交并交卷…")
-        return submitPaperAnswers(paper, questions, answers, accuracy)
+        return submitPaperAnswers(paper, questions, answers, targetRate)
     }
 
     // ── 字段提取辅助 ────────────────────────────────────────────
