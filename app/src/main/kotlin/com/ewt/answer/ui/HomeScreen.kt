@@ -1,11 +1,11 @@
 package com.ewt.answer.ui
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.AccelerateEasing
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.DecelerateEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -547,21 +547,21 @@ private fun FilterPopupCard(
     // 进入：容器主要尺寸展开（快速响应 → 连续展开 → 柔和减速 → 稳定停下）
     LaunchedEffect(Unit) {
         if (!exiting) {
-            openProgress.animateTo(1f, tween(260, easing = DecelerateEasing))
+            openProgress.animateTo(1f, tween(260, easing = LinearOutSlowInEasing))
         }
     }
     // 进入：容器展开约 70% 后，内容轻柔浮现
     LaunchedEffect(Unit) {
         if (!exiting) {
             delay(150)
-            contentProgress.animateTo(1f, tween(160, easing = DecelerateEasing))
+            contentProgress.animateTo(1f, tween(160, easing = LinearOutSlowInEasing))
         }
     }
     // 关闭：内容先淡出 → 容器向锚点收缩 → 完成回调移除
     LaunchedEffect(exiting) {
         if (exiting) {
-            exitContent.animateTo(1f, tween(100, easing = DecelerateEasing))
-            exitScale.animateTo(1f, tween(200, easing = AccelerateEasing))
+            exitContent.animateTo(1f, tween(100, easing = LinearOutSlowInEasing))
+            exitScale.animateTo(1f, tween(200, easing = FastOutLinearInEasing))
             onExitFinished()
         }
     }
