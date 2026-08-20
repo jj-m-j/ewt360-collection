@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RectangleShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -34,6 +36,9 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.UserInfo
+import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import top.yukonga.miuix.kmp.basic.Card
@@ -61,6 +66,7 @@ fun HomeScreen(
     accuracy: Int,
     onOpenPaper: (Paper) -> Unit,
     onOpenLinkQuery: () -> Unit,
+    backdrop: LayerBackdrop,
 ) {
     val vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
     val uiState by vm.uiState.collectAsState()
@@ -96,8 +102,16 @@ fun HomeScreen(
             TopAppBar(
                 title = "试卷列表",
                 subtitle = userInfo?.realName?.let { "你好，$it" } ?: "",
-                // 半透明毛玻璃感顶栏
-                color = MiuixTheme.colorScheme.surface.copy(alpha = 0.82f),
+                // 液态玻璃顶栏：真实 backdrop 模糊（Android 12+），低版本自动降级为半透明底色
+                modifier = Modifier.drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { RectangleShape },
+                    effects = { blur(10f.dp.toPx()) },
+                    onDrawSurface = {
+                        drawRect(MiuixTheme.colorScheme.surface.copy(alpha = 0.62f))
+                    },
+                ),
+                color = Color.Transparent,
                 scrollBehavior = scrollBehavior,
             )
         },

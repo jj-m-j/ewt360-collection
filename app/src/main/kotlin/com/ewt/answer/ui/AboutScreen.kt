@@ -10,12 +10,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RectangleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -38,10 +43,23 @@ fun AboutScreen(
     onFontEnabledChange: (Boolean) -> Unit,
     onOpenDebug: () -> Unit,
     onLogout: () -> Unit,
+    backdrop: LayerBackdrop,
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(title = "关于")
+            TopAppBar(
+                title = "关于",
+                // 液态玻璃顶栏：真实 backdrop 模糊（Android 12+），低版本自动降级为半透明底色
+                modifier = Modifier.drawBackdrop(
+                    backdrop = backdrop,
+                    shape = { RectangleShape },
+                    effects = { blur(10f.dp.toPx()) },
+                    onDrawSurface = {
+                        drawRect(MiuixTheme.colorScheme.surface.copy(alpha = 0.62f))
+                    },
+                ),
+                color = Color.Transparent,
+            )
         },
     ) { padding ->
         Column(

@@ -90,13 +90,13 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     /**
      * 扫描单个作业下所有可答题任务（试卷 205 + 课后习题 204），按日期正序。
-     * 日期统计失败时回退按 12 学科扫描，日期用作业结束时间兜底。
+     * 日期统计失败时回退按 12 学科扫描，日期用作业开始时间（布置日近似，不用截止日期）兜底。
      */
     suspend fun scanHomeworkPapers(schoolId: String, homework: HomeworkItem): List<Paper> {
         val papers = mutableListOf<Paper>()
         val hid = homework.homeworkId
 
-        // 1. 日期/学科统计
+        // 1. 日期/学科统计（opt.js getStudentHomeworkDaySubjectStat：元素字段为 dateId / date）
         var dayList = mutableListOf<DaySlot>()
         try {
             val statData = EwtEndpoints.getStudentHomeworkDaySubjectStat(schoolId, hid).optObj("data")
@@ -104,8 +104,9 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 ?: statData?.optArr("days") ?: statData?.optArr("list")
             for (el in days ?: emptyList()) {
                 val o = el as? JsonObject ?: continue
-                val dayId = o.str("dayId")
-                if (dayId != null) {
+                // opt.js: day.dateId（日期槽 id），兼容旧的 dayId 字段
+                val dayId = o.str("dateId") ?: o.str("dayId")
+                if (dayId != null && dayId != "0") {
                     dayList.add(DaySlot(dayId, null, o.longOr("date", 0L)))
                 } else {
                     val sid = o.intOr("subjectId", 0)
@@ -115,10 +116,9 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         } catch (e: Exception) {
             DebugLog.e("Scan", "日期统计失败，回退按学科", e)
         }
-        // 兜底日期：日期统计失败时用作业结束/开始时间
+        // 兜底日期：无日期槽时用作业开始时间（布置日近似；勿用截止日期 endTime）
         val fallbackDate = if (dayList.isEmpty()) {
-            val ts = if (homework.endTime > 0L) homework.endTime else homework.startTime
-            formatDate(ts)
+            formatDate(homework.startTime)
         } else {
             ""
         }
