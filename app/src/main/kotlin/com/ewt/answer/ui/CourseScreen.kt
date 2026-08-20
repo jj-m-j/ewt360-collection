@@ -70,7 +70,10 @@ fun CourseScreen() {
                 title = "课程",
                 titlePadding = 16.dp,
                 actions = {
-                    TextButton(text = "网页模式") { webMode = true }
+                    TextButton(
+                        text = "网页模式",
+                        onClick = { webMode = true },
+                    )
                 },
             )
         },
@@ -94,7 +97,10 @@ fun CourseScreen() {
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                             modifier = Modifier.weight(1f),
                         )
-                        TextButton(text = "返回原生刷课") { webMode = false }
+                        TextButton(
+                            text = "返回原生刷课",
+                            onClick = { webMode = false },
+                        )
                     }
                     WebCourseView(Modifier.weight(1f))
                 }
@@ -135,7 +141,10 @@ fun CourseScreen() {
                         }
                         if (brushingAll) {
                             Spacer(Modifier.width(10.dp))
-                            TextButton(text = "停止", onClick = { vm.stop() })
+                            TextButton(
+                                text = "停止",
+                                onClick = { vm.stop() },
+                            )
                         }
                     }
 
@@ -173,7 +182,10 @@ fun CourseScreen() {
                                     textAlign = TextAlign.Center,
                                 )
                                 Spacer(Modifier.height(12.dp))
-                                TextButton(text = "重试", onClick = { vm.load() })
+                                TextButton(
+                                    text = "重试",
+                                    onClick = { vm.load() },
+                                )
                             }
                         }
                         is CourseViewModel.UiState.Ready -> {
