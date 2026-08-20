@@ -48,11 +48,18 @@ class CourseViewModel(private val repo: CourseRepository) : ViewModel() {
     private val _statusText = MutableStateFlow("")
     val statusText: StateFlow<String> = _statusText
 
+    private var loadJob: Job? = null
     private var brushJob: Job? = null
 
-    fun load() {
-        if (_uiState.value is UiState.Ready || _uiState.value is UiState.Loading) return
-        viewModelScope.launch {
+    /**
+     * 加载课程列表。
+     * 注意：初始 _uiState 是 Loading，guard 不能拦截 Loading（否则首次加载永不执行）。
+     * 用 loadJob 防重入；Ready 且非强制时跳过。
+     */
+    fun load(force: Boolean = false) {
+        if (!force && _uiState.value is UiState.Ready) return
+        if (loadJob?.isActive == true) return
+        loadJob = viewModelScope.launch {
             _uiState.value = UiState.Loading
             try {
                 val list = repo.scanVideoLessons { _statusText.value = it }
@@ -103,7 +110,7 @@ class CourseViewModel(private val repo: CourseRepository) : ViewModel() {
     /** 一键刷全部未完成课时（串行，可停止） */
     fun brushAll() {
         if (brushJob?.isActive == true) return
-        viewModelScope.launch {
+        brushJob = viewModelScope.launch {
             _brushingAll.value = true
             _summary.value = ""
             val pending = _lessons.value.values
@@ -135,7 +142,7 @@ class CourseViewModel(private val repo: CourseRepository) : ViewModel() {
                 _summary.value = "批量完成：$ok/${pending.size}"
             }
             _brushingAll.value = false
-        }.also { brushJob = it }
+        }
     }
 
     /** 停止当前刷课任务 */
