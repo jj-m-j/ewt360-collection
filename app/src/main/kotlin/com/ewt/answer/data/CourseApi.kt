@@ -35,7 +35,7 @@ data class GlobalConf(
  *
  * ⚠️ 699101「环境异常」修复（2026-08-20，三轮，termux 抓包逐字段对齐）：
  *  ① body 字段对齐：action=1 speed=1、begin_time 按 action 区分、action=3 收尾。
- *  ② 传输层对齐 httpx：禁 HTTP/2（强制 HTTP/1.1）、Accept: */*、Content-Type 纯 application/json。
+ *  ② 传输层对齐 httpx：禁 HTTP/2（强制 HTTP/1.1）、Accept 头、Content-Type 纯 application/json。
  *  ③ UA 对齐 termux 成功样本：python-httpx/0.28.1。
  *     关键：BFE 风控抓「伪装浏览器的工具」——浏览器 UA + 无浏览器 cookie/JS 特征 = 699101；
  *     诚实脚本 UA（python-httpx）经签名校验反而放行（termux 实测）。
