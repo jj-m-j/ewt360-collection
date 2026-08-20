@@ -67,16 +67,18 @@ import top.yukonga.miuix.kmp.window.WindowDialog
 sealed class Screen {
     data object Boot : Screen()
     data object Login : Screen()
-    /** 主层（底部 Tab：0=试卷 1=关于） */
+    /** 主层（底部 Tab：0=试卷 1=设置） */
     data object Main : Screen()
     data object LinkQuery : Screen()
     data object Debug : Screen()
+    /** 关于（占位页，从设置页进入） */
+    data object About : Screen()
     data class Questions(val paper: Paper) : Screen()
 }
 
 /** 底部 Tab 索引 */
 private const val TAB_PAPERS = 0
-private const val TAB_ABOUT = 1
+private const val TAB_SETTINGS = 1
 
 /** 弹窗底部操作栏：取消(次要) + 确认(小米蓝) 右对齐 —— 全应用统一 */
 @Composable
@@ -122,7 +124,7 @@ fun AppRoot() {
     var fontPrompted by remember { mutableStateOf(prefs.getBoolean("font_prompted", false)) }
     var showFontPrompt by remember { mutableStateOf(false) }
 
-    // 动态加载 MiSans 字体
+    // 动态加载 MiSans 字体（已下载则直接使用本地缓存，不重复下载）
     var miSans by remember { mutableStateOf<FontFamily?>(null) }
     LaunchedEffect(fontEnabled) {
         if (fontEnabled) {
@@ -148,7 +150,7 @@ fun AppRoot() {
         var screen by remember { mutableStateOf<Screen>(Screen.Boot) }
         var previous by remember { mutableStateOf<Screen?>(null) }
         var userInfo by remember { mutableStateOf<UserInfo?>(null) }
-        // 主层底部 Tab（试卷 / 关于）
+        // 主层底部 Tab（试卷 / 设置）
         var tab by remember { mutableIntStateOf(TAB_PAPERS) }
         // paperId → 真实题数（打开试卷后回传，主页展示）
         var paperCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
@@ -279,9 +281,9 @@ fun AppRoot() {
                         repo = repo,
                         fontEnabled = fontEnabled,
                         onFontEnabledChange = { en ->
+                            // 仅切换启用状态：不删除已下载字体，重新开启免下载
                             fontEnabled = en
                             prefs.edit().putBoolean("font_enabled", en).apply()
-                            if (!en) MiuixFonts.clearCache(context)
                         },
                         navigateTo = { navigateTo(it) },
                         onBack = { goBack() },
@@ -310,7 +312,8 @@ fun AppRoot() {
                             gestureCommitted -> fadeIn(tween(1)).togetherWith(fadeOut(tween(1)))
                             targetState is Screen.Questions ||
                                 targetState is Screen.LinkQuery ||
-                                targetState is Screen.Debug -> {
+                                targetState is Screen.Debug ||
+                                targetState is Screen.About -> {
                                 (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
                                     .togetherWith(fadeOut(tween(200)))
                             }
@@ -332,9 +335,9 @@ fun AppRoot() {
                         repo = repo,
                         fontEnabled = fontEnabled,
                         onFontEnabledChange = { en ->
+                            // 仅切换启用状态：不删除已下载字体，重新开启免下载
                             fontEnabled = en
                             prefs.edit().putBoolean("font_enabled", en).apply()
-                            if (!en) MiuixFonts.clearCache(context)
                         },
                         navigateTo = { navigateTo(it) },
                         onBack = { goBack() },
@@ -357,7 +360,7 @@ fun AppRoot() {
             ) {
                 Column {
                     Text(
-                        text = "MiSans 为小米系统级字体，下载后界面显示效果更佳。占用约 20MB 空间，可在「关于 → 设置」中随时关闭并删除。",
+                        text = "MiSans 为小米系统级字体，下载后界面显示效果更佳。占用约 20MB 空间；字体文件下载后长期保留，可在「设置」中随时切换启用状态，关闭不会删除、再次开启无需重新下载。",
                         fontSize = 13.sp,
                         color = MiuixTheme.colorScheme.onSurfaceSecondary,
                     )
@@ -415,6 +418,7 @@ private fun RenderScreen(
             onOpenPaper = { paper -> navigateTo(Screen.Questions(paper)) },
             onOpenLinkQuery = { navigateTo(Screen.LinkQuery) },
             onOpenDebug = { navigateTo(Screen.Debug) },
+            onOpenAbout = { navigateTo(Screen.About) },
             onLogout = {
                 repo.clearToken()
                 navigateTo(Screen.Login)
@@ -425,6 +429,9 @@ private fun RenderScreen(
             onOpenPaper = { paper -> navigateTo(Screen.Questions(paper)) },
         )
         Screen.Debug -> DebugScreen(
+            onBack = onBack,
+        )
+        Screen.About -> AboutPlaceholderScreen(
             onBack = onBack,
         )
         is Screen.Questions -> QuestionsScreen(
@@ -448,6 +455,7 @@ private fun MainLayer(
     onOpenPaper: (Paper) -> Unit,
     onOpenLinkQuery: () -> Unit,
     onOpenDebug: () -> Unit,
+    onOpenAbout: () -> Unit,
     onLogout: () -> Unit,
 ) {
     // 玻璃底栏的反射源：捕获整个 Tab 内容（列表滚动画面；顶栏 blur 在页面内部用独立 backdrop，避免成环）
@@ -480,6 +488,7 @@ private fun MainLayer(
                     fontMb = MiuixFonts.downloadedMb(LocalContext.current),
                     onFontEnabledChange = onFontEnabledChange,
                     onOpenDebug = onOpenDebug,
+                    onOpenAbout = onOpenAbout,
                     onLogout = onLogout,
                 )
             }
@@ -488,7 +497,7 @@ private fun MainLayer(
         LiquidGlassBottomBar(
             tabs = listOf(
                 LiquidGlassTab(icon = PaperTabIcon, label = "试卷"),
-                LiquidGlassTab(icon = AboutTabIcon, label = "关于"),
+                LiquidGlassTab(icon = AboutTabIcon, label = "设置"),
             ),
             selectedTabIndex = selectedTabIndex,
             onTabSelected = onTabSelect,

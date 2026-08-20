@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-/** 主页：试卷列表 + 链接查询 + 日期/学科筛选（顶栏三杠弹窗）+ 搜索 + 一键刷今日（未完工） */
+/** 主页：试卷列表 + 链接查询 + 日期/学科筛选（三条杠锚点弹窗 + 滚轮）+ 搜索 + 一键刷今日（选日期刷卷） */
 class HomeViewModel(private val repo: EwtRepository) : ViewModel() {
 
     sealed interface UiState {
@@ -33,6 +33,14 @@ class HomeViewModel(private val repo: EwtRepository) : ViewModel() {
 
     private val _brushing = MutableStateFlow(false)
     val brushing: StateFlow<Boolean> = _brushing
+
+    /** 一键刷今日：当前进度文案 */
+    private val _brushProgress = MutableStateFlow("")
+    val brushProgress: StateFlow<String> = _brushProgress
+
+    /** 一键刷今日：结果文案（null = 无结果） */
+    private val _brushResult = MutableStateFlow<String?>(null)
+    val brushResult: StateFlow<String?> = _brushResult
 
     /** 日期筛选（"MM-dd" 或 null=全部） */
     private val _dateFilter = MutableStateFlow<String?>(null)
@@ -65,40 +73,54 @@ class HomeViewModel(private val repo: EwtRepository) : ViewModel() {
         }
     }
 
-    /** 一键刷今天所有试卷（预留给正式版；当前入口未开放仅提示） */
-    fun brushToday(onProgress: (String) -> Unit, onDone: (String) -> Unit) {
+    /**
+     * 一键刷指定日期所有试卷：打开 → 题目 → 解锁 → 逐题答案 → 提交交卷自批。
+     * 进度写入 [brushProgress]，最终结果写入 [brushResult]。
+     */
+    fun brushToday(date: String) {
         if (_brushing.value) return
         viewModelScope.launch {
             _brushing.value = true
+            _brushProgress.value = ""
+            _brushResult.value = null
             try {
                 var groups = (uiState.value as? UiState.Ready)?.groups
                 if (groups == null) {
-                    groups = repo.scanAllPapers {}
+                    groups = repo.scanAllPapers { _brushProgress.value = it }
                     _uiState.value = if (groups.isEmpty()) UiState.Empty else UiState.Ready(groups)
                 }
-                val today = formatToday()
-                val papers = groups.flatMap { it.papers }.filter { it.date == today }
+                val papers = groups.flatMap { it.papers }.filter { it.date == date }
                 if (papers.isEmpty()) {
-                    onDone("今天（$today）没有可刷的试卷")
+                    _brushResult.value = "所选日期（$date）没有可刷的试卷"
                     return@launch
                 }
-                val sb = StringBuilder("今日刷卷（$today）共 ${papers.size} 张：")
+                val sb = StringBuilder("刷卷（$date）共 ${papers.size} 张：")
                 papers.forEachIndexed { i, p ->
-                    onProgress("刷卷 ${i + 1}/${papers.size}：${p.title}")
+                    _brushProgress.value = "刷卷 ${i + 1}/${papers.size}：${p.title}"
                     try {
-                        repo.brushPaper(p) { onProgress("刷卷 ${i + 1}/${papers.size}：$it") }
+                        repo.brushPaper(p) { msg ->
+                            _brushProgress.value = "刷卷 ${i + 1}/${papers.size}：$msg"
+                        }
                         sb.append("\n✓ ").append(p.title)
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         sb.append("\n✗ ").append(p.title).append("：").append(e.message)
                     }
                 }
-                onDone(sb.toString())
+                _brushResult.value = sb.toString()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                onDone("刷卷失败：${e.message}")
+                _brushResult.value = "刷卷失败：${e.message}"
             } finally {
                 _brushing.value = false
             }
         }
+    }
+
+    fun clearBrushResult() {
+        _brushResult.value = null
     }
 
     fun setDateFilter(value: String?) {
@@ -111,11 +133,6 @@ class HomeViewModel(private val repo: EwtRepository) : ViewModel() {
 
     fun setSearchQuery(value: String) {
         _searchQuery.value = value
-    }
-
-    private fun formatToday(): String {
-        val d = java.util.Date()
-        return String.format("%02d-%02d", d.month + 1, d.date)
     }
 
     companion object {
