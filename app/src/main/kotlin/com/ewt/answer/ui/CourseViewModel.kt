@@ -10,6 +10,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /** 课程页 ViewModel：原生视频课扫描 + 刷课（竞态爆发上报） */
@@ -76,6 +77,12 @@ class CourseViewModel(private val repo: CourseRepository) : ViewModel() {
         _lessons.value = _lessons.value + (id to transform(cur))
     }
 
+    private fun applyResult(lessonId: String, r: com.ewt.answer.data.BrushResult) {
+        update(lessonId) {
+            it.copy(running = false, done = r.success, failed = !r.success, message = r.message)
+        }
+    }
+
     /** 单课时刷课 */
     fun brushLesson(lesson: VideoLesson) {
         if (brushJob?.isActive == true) return
@@ -89,15 +96,13 @@ class CourseViewModel(private val repo: CourseRepository) : ViewModel() {
                     cur.copy(running = true, message = msg, percent = pct ?: cur.percent)
                 }
             }
-            update(lesson.lessonId) {
-                it.copy(running = false, done = r.success, failed = !r.success, message = r.message)
-            }
+            applyResult(lesson.lessonId, r)
         }
     }
 
-    /** 一键刷全部未完成课时（串行） */
+    /** 一键刷全部未完成课时（串行，可停止） */
     fun brushAll() {
-        if (_brushingAll.value) return
+        if (brushJob?.isActive == true) return
         viewModelScope.launch {
             _brushingAll.value = true
             _summary.value = ""
@@ -111,6 +116,7 @@ class CourseViewModel(private val repo: CourseRepository) : ViewModel() {
             }
             var ok = 0
             pending.forEachIndexed { i, lesson ->
+                if (!isActive) return@launch
                 _summary.value = "刷课 ${i + 1}/${pending.size}：${lesson.title}"
                 update(lesson.lessonId) {
                     it.copy(running = true, done = false, failed = false, percent = 0, message = "初始化…")
@@ -122,14 +128,14 @@ class CourseViewModel(private val repo: CourseRepository) : ViewModel() {
                         cur.copy(running = true, message = msg, percent = pct ?: cur.percent)
                     }
                 }
-                update(lesson.lessonId) {
-                    it.copy(running = false, done = r.success, failed = !r.success, message = r.message)
-                }
+                applyResult(lesson.lessonId, r)
                 if (r.success) ok++
             }
-            _summary.value = "批量完成：$ok/${pending.size}"
+            if (isActive) {
+                _summary.value = "批量完成：$ok/${pending.size}"
+            }
             _brushingAll.value = false
-        }
+        }.also { brushJob = it }
     }
 
     /** 停止当前刷课任务 */
