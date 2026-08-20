@@ -11,6 +11,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.put
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
@@ -32,10 +33,12 @@ data class GlobalConf(
  * 源自 ewt360-brush（spark_ewt）逆向：BFE 播放上报 + HMAC-SHA1 签名（复刻 MSTPlayer makeSecretKey）。
  * bizCode: 1013=普通视频（web），2013=app 端。
  *
- * ⚠️ 699101「环境异常」修复（2026-08-20）：上报字段与 ewt_brush_v2 逐字段对齐——
- *   action=1 的 speed 必须是 1（启动即 2 倍速 = 明显非人工）、begin_time 按 action 区分
- *   （1=report_time-60s / 2=conf.ts / 3=report_time）、User-Agent 用浏览器 UA（去掉 okhttp 特征）。
- *   之前 app 所有 action 都 speed=2 + begin_time=report_time-60s + okhttp UA → 被 BFE 判定环境异常。
+ * ⚠️ 699101「环境异常」修复（2026-08-20，两轮）：
+ *  ① 上报 body 字段与 ewt_brush_v2 逐字段对齐：action=1 speed=1、begin_time 按 action 区分、
+ *     action=3 收尾、Edge UA（termux 实测 burst=1/12 不触发）。
+ *  ② 传输层对齐 httpx（termux 成功样本）：禁用 HTTP/2（OkHttp 默认协商 h2，httpx 默认 h1.1）+
+ *     Accept: */* + Content-Type 纯 application/json。web 协议(1013)+OkHttp(h2/Conscrypt) 组合
+ *     被 BFE 识别为移动端辅助工具 → 699101；h1.1 特征与 httpx 一致。
  */
 object CourseApi {
     const val BFE = "https://bfe.ewt360.com"
@@ -49,6 +52,8 @@ object CourseApi {
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
             .writeTimeout(20, TimeUnit.SECONDS)
+            // 对齐 httpx（termux 成功）：禁 HTTP/2，强制 HTTP/1.1
+            .protocols(listOf(Protocol.HTTP_1_1))
             .build()
     }
 
@@ -181,7 +186,7 @@ object CourseApi {
     /**
      * 单条播放上报。返回 OK / FAIL / WAF。
      * action: 1=play start, 2=进度上报(竞态爆发), 3=完成
-     * 字段与 ewt_brush_v2（spark_ewt 协议）逐字段对齐，termux burst=1/12 实测不触发 699101。
+     * 字段与 ewt_brush_v2（spark_ewt 协议）逐字段对齐；传输层对齐 httpx（h1.1 + Accept + CT）。
      */
     suspend fun reportBatch(
         conf: GlobalConf,
@@ -266,6 +271,7 @@ object CourseApi {
             .url(url)
             .header("token", token)
             .header("x-bfe-session-id", conf.sessionId)
+            .header("Accept", "*/*")
             .header("Content-Type", "application/json")
             // 浏览器 UA（对齐脚本/官方播放器），去掉 OkHttp 默认 UA 的脚本特征
             .header(
@@ -273,7 +279,7 @@ object CourseApi {
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
                     "(KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 Edg/116.0.1938.76",
             )
-            .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
         try {
             client.newCall(request).execute().use { resp ->
