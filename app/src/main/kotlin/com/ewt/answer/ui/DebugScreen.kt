@@ -28,6 +28,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ewt.answer.data.DebugLog
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -100,7 +102,7 @@ fun DebugScreen(onBack: () -> Unit) {
                 )
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(16.dp))
             // 第一行：日志操作（等宽）
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -125,27 +127,31 @@ fun DebugScreen(onBack: () -> Unit) {
                     modifier = Modifier.weight(1f),
                 )
             }
-            // 第二行：字体下载（等宽）
-            Row(
+            Spacer(Modifier.height(10.dp))
+            // 第二行：字体下载（小米蓝实心，与上面按钮区隔开）
+            Button(
+                onClick = {
+                    fontLoading = true
+                    scope.launch {
+                        val ok = MiuixFonts.loadMiSans(context) != null
+                        Toast.makeText(
+                            context,
+                            if (ok) "字体下载成功" else "字体下载失败",
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                        fontLoading = false
+                    }
+                },
+                enabled = !fontLoading,
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    color = MiuixTheme.colorScheme.primary,
+                    contentColor = MiuixTheme.colorScheme.onPrimary,
+                ),
             ) {
-                TextButton(
+                Text(
                     text = if (fontLoading) "字体下载中…" else "下载 MiSans 字体",
-                    enabled = !fontLoading,
-                    onClick = {
-                        fontLoading = true
-                        scope.launch {
-                            val ok = MiuixFonts.loadMiSans(context) != null
-                            Toast.makeText(
-                                context,
-                                if (ok) "字体下载成功" else "字体下载失败",
-                                Toast.LENGTH_SHORT,
-                            ).show()
-                            fontLoading = false
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
+                    fontSize = 14.sp,
                 )
             }
         }

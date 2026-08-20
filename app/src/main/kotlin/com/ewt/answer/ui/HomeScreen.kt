@@ -40,8 +40,11 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import kotlin.random.Random
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
@@ -59,12 +62,22 @@ import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
 
+/** 解析“80-90 / 80~90”目标正确率区间；非法返回 null */
+private fun parseRateRange(input: String): IntRange? {
+    val m = Regex("""^\s*(\d{1,3})\s*[-~～至]\s*(\d{1,3})\s*$""").find(input.trim()) ?: return null
+    val a = m.groupValues[1].toIntOrNull() ?: return null
+    val b = m.groupValues[2].toIntOrNull() ?: return null
+    val lo = minOf(a, b).coerceIn(0, 100)
+    val hi = maxOf(a, b).coerceIn(0, 100)
+    if (hi <= 0) return null
+    return lo..hi
+}
+
 @Composable
 fun HomeScreen(
     userInfo: UserInfo?,
     paperCounts: Map<String, Int>,
     listState: LazyListState,
-    accuracy: Int,
     onOpenPaper: (Paper) -> Unit,
     onOpenLinkQuery: () -> Unit,
 ) {
@@ -80,6 +93,9 @@ fun HomeScreen(
     var brushConfirm by remember { mutableStateOf(false) }
     var brushProgress by remember { mutableStateOf<String?>(null) }
     var brushResult by remember { mutableStateOf<String?>(null) }
+
+    // 刷今日目标正确率区间（提交前弹窗输入）
+    val brushRateState = rememberTextFieldState(initial = "80-90")
 
     // 顶栏独立 backdrop：只捕获 Scaffold 内容区（列表），不含顶栏自身 ——
     // 若采样含顶栏的整页层，RenderNode 成环，hwui prepareTreeImpl 无限递归（原生崩溃）
@@ -290,7 +306,7 @@ fun HomeScreen(
         }
     }
 
-    // 刷今日确认对话框
+    // 刷今日确认对话框：输入整卷目标正确率区间
     if (brushConfirm) {
         WindowDialog(
             show = true,
@@ -300,29 +316,55 @@ fun HomeScreen(
         ) {
             Column {
                 Text(
-                    text = "将对今天的所有试卷自动执行：打开 → 获取全部答案 → 提交交卷自批。主观题按准确率 $accuracy% 分配得分。确定继续？",
+                    text = "将对今天的所有试卷自动执行：打开 → 获取全部答案 → 提交交卷自批。客观题系统阅卷必对；主观题按 对100%/半对50%/错0% 分配，使整卷正确率落在区间内。",
                     fontSize = 13.sp,
                     color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 )
                 Spacer(Modifier.height(12.dp))
+                TextField(
+                    state = brushRateState,
+                    label = "目标正确率区间",
+                    useLabelAsPlaceholder = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "例如 80-90，每张卷子实际正确率在区间内随机取值",
+                    fontSize = 11.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+                Spacer(Modifier.height(14.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     TextButton(text = "取消", onClick = { brushConfirm = false })
-                    TextButton(text = "开始", onClick = {
-                        brushConfirm = false
-                        brushResult = null
-                        brushProgress = "准备中…"
-                        vm.brushToday(
-                            accuracy = accuracy,
-                            onProgress = { brushProgress = it },
-                            onDone = {
-                                brushProgress = null
-                                brushResult = it
-                            },
-                        )
-                    })
+                    Spacer(Modifier.width(10.dp))
+                    Button(
+                        onClick = {
+                            val range = parseRateRange(brushRateState.text.toString())
+                            if (range == null) return@Button
+                            brushConfirm = false
+                            brushResult = null
+                            brushProgress = "准备中…"
+                            val rate = Random.nextInt(range.first, range.last + 1)
+                            vm.brushToday(
+                                targetRate = rate,
+                                onProgress = { brushProgress = it },
+                                onDone = {
+                                    brushProgress = null
+                                    brushResult = it
+                                },
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            color = MiuixTheme.colorScheme.primary,
+                            contentColor = MiuixTheme.colorScheme.onPrimary,
+                        ),
+                    ) {
+                        Text("开始刷卷", fontSize = 14.sp)
+                    }
                 }
             }
         }
@@ -356,12 +398,21 @@ fun HomeScreen(
                     fontSize = 13.sp,
                     color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(14.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(text = "知道了", onClick = { brushResult = null })
+                    Button(
+                        onClick = { brushResult = null },
+                        colors = ButtonDefaults.buttonColors(
+                            color = MiuixTheme.colorScheme.primary,
+                            contentColor = MiuixTheme.colorScheme.onPrimary,
+                        ),
+                    ) {
+                        Text("知道了", fontSize = 14.sp)
+                    }
                 }
             }
         }
