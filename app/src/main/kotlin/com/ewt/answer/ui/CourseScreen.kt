@@ -24,8 +24,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,22 +37,26 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ewt.answer.data.CourseRepository
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.effects.blur
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 课程页：原生视频课刷课。顶栏与试卷/设置页统一（共享液态玻璃滚动收缩 Header）。
+ * 课程页：原生视频课刷课。顶栏与试卷/设置页统一（build174 同款 miuix TopAppBar + 上滑收缩）。
  */
 @Composable
 fun CourseScreen(
@@ -70,9 +76,8 @@ fun CourseScreen(
     val glassSurface = MiuixTheme.colorScheme.surface
     val listState = rememberLazyListState()
 
-    // 滚动收缩进度（共享组件统一计算）
-    val collapseDistance = with(LocalDensity.current) { 64.dp.toPx() }
-    val collapseProgress by rememberCollapseProgress(listState, collapseDistance)
+    // build174 同款：miuix 原生 TopAppBar + 上滑收缩
+    val scrollBehavior = MiuixScrollBehavior()
 
     LaunchedEffect(Unit) {
         val prefs = context.getSharedPreferences("ewt_prefs", android.content.Context.MODE_PRIVATE)
@@ -82,12 +87,20 @@ fun CourseScreen(
 
     Scaffold(
         topBar = {
-            CollapsingHeaderBar(
+            TopAppBar(
                 title = "课程",
                 subtitle = "当前并发 ${CourseRepository.burstSize} 路",
-                progress = collapseProgress,
-                backdrop = topBarBackdrop,
-                glassSurface = glassSurface,
+                titlePadding = 16.dp,
+                modifier = Modifier.drawBackdrop(
+                    backdrop = topBarBackdrop,
+                    shape = { RectangleShape },
+                    effects = { blur(10f.dp.toPx()) },
+                    onDrawSurface = {
+                        drawRect(glassSurface.copy(alpha = 0.62f))
+                    },
+                ),
+                color = Color.Transparent,
+                scrollBehavior = scrollBehavior,
                 actions = {
                     IconButton(onClick = onOpenSettings) {
                         Icon(
@@ -107,7 +120,9 @@ fun CourseScreen(
         ) {
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection),
                 contentPadding = PaddingValues(
                     start = 16.dp,
                     end = 16.dp,
