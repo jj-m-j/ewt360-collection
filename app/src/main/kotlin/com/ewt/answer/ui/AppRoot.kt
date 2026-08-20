@@ -76,6 +76,8 @@ sealed class Screen {
     data object Debug : Screen()
     /** 关于（占位页，从设置页进入） */
     data object About : Screen()
+    /** 课程网页模式（WebView 兜底，独立页避免 backdrop 闪烁） */
+    data object CourseWeb : Screen()
     data class Questions(val paper: Paper) : Screen()
 }
 
@@ -323,7 +325,8 @@ fun AppRoot() {
                             targetState is Screen.Questions ||
                                 targetState is Screen.LinkQuery ||
                                 targetState is Screen.Debug ||
-                                targetState is Screen.About -> {
+                                targetState is Screen.About ||
+                                targetState is Screen.CourseWeb -> {
                                 (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
                                     .togetherWith(fadeOut(tween(200)))
                             }
@@ -429,6 +432,7 @@ private fun RenderScreen(
             onOpenLinkQuery = { navigateTo(Screen.LinkQuery) },
             onOpenDebug = { navigateTo(Screen.Debug) },
             onOpenAbout = { navigateTo(Screen.About) },
+            onOpenCourseWeb = { navigateTo(Screen.CourseWeb) },
             onLogout = {
                 repo.clearToken()
                 navigateTo(Screen.Login)
@@ -442,6 +446,9 @@ private fun RenderScreen(
             onBack = onBack,
         )
         Screen.About -> AboutPlaceholderScreen(
+            onBack = onBack,
+        )
+        Screen.CourseWeb -> WebCourseScreen(
             onBack = onBack,
         )
         is Screen.Questions -> QuestionsScreen(
@@ -466,6 +473,7 @@ private fun MainLayer(
     onOpenLinkQuery: () -> Unit,
     onOpenDebug: () -> Unit,
     onOpenAbout: () -> Unit,
+    onOpenCourseWeb: () -> Unit,
     onLogout: () -> Unit,
 ) {
     // 玻璃底栏的反射源：捕获整个 Tab 内容（列表滚动画面；顶栏 blur 在页面内部用独立 backdrop，避免成环）
@@ -491,7 +499,9 @@ private fun MainLayer(
             label = "tab",
         ) { t ->
             when (t) {
-                TAB_COURSE -> CourseScreen()
+                TAB_COURSE -> CourseScreen(
+                    onOpenWeb = onOpenCourseWeb,
+                )
                 TAB_PAPERS -> HomeScreen(
                     userInfo = userInfo,
                     paperCounts = paperCounts,
