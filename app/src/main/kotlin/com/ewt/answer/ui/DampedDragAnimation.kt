@@ -1,39 +1,43 @@
 package com.ewt.answer.ui
 
+// Adapted from Kyant0/AndroidLiquidGlass & compose-miuix-ui example (Apache-2.0)
+
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.MutatorMutex
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.time.TimeSource
 
 /**
- * 移植自 AndroidLiquidGlass catalog（DampedDragAnimation）：
- * 液态"带阻尼拖拽"动画。
+ * 液态"带阻尼拖拽"动画（miuix 版移植）。
  *
  * - value：选中位（0..tabsCount-1），可被手指拖动、带速度惯性回弹
  * - pressProgress：按压深浅（0..1），驱动色差折射 / 高光 / 投影 / 内阴影
- * - scaleX / scaleY：按压缩放（内胆被"压扁又鼓起"）
+ * - scaleX / scaleY：按压缩放（内胆被"压扁又鼓起"），press/release 用 Job 接管防动画竞争
  * - velocity：拖动速度（相对整个行程），驱动液态拉伸
  */
-class DampedDragAnimation(
+internal class DampedDragAnimation(
     private val animationScope: CoroutineScope,
     val initialValue: Float,
     val valueRange: ClosedRange<Float>,
     val visibilityThreshold: Float,
     val initialScale: Float,
     val pressedScale: Float,
+    val canDrag: (Offset) -> Boolean = { true },
     val onDragStarted: DampedDragAnimation.(position: Offset) -> Unit,
     val onDragStopped: DampedDragAnimation.() -> Unit,
+    val onDragCancelled: DampedDragAnimation.() -> Unit = onDragStopped,
     val onDrag: DampedDragAnimation.(size: IntSize, dragAmount: Offset) -> Unit,
 ) {
 
@@ -61,10 +65,15 @@ class DampedDragAnimation(
 
     private val mutatorMutex = MutatorMutex()
 
+    private var pressJob: Job? = null
+    private var releaseJob: Job? = null
+
     private val velocityTracker = VelocityTracker()
+    private val startMark = TimeSource.Monotonic.markNow()
+
+    private fun nowMillis(): Long = startMark.elapsedNow().inWholeMilliseconds
 
     val value: Float get() = valueAnimation.value
-    val progress: Float get() = (value - valueRange.start) / (valueRange.endInclusive - valueRange.start)
     val targetValue: Float get() = valueAnimation.targetValue
     val pressProgress: Float get() = pressProgressAnimation.value
     val scaleX: Float get() = scaleXAnimation.value
@@ -82,17 +91,23 @@ class DampedDragAnimation(
                 release()
             },
             onDragCancel = {
-                onDragStopped()
+                onDragCancelled()
                 release()
-            }
+            },
         ) { change, dragAmount ->
-            onDrag(size, dragAmount)
+            val isInside = canDrag(change.position)
+            val wasInside = canDrag(change.previousPosition)
+            if (isInside && wasInside) {
+                onDrag(size, dragAmount)
+            }
         }
     }
 
     fun press() {
+        releaseJob?.cancel()
+        pressJob?.cancel()
         velocityTracker.resetTracking()
-        animationScope.launch {
+        pressJob = animationScope.launch {
             launch { pressProgressAnimation.animateTo(1f, pressProgressAnimationSpec) }
             launch { scaleXAnimation.animateTo(pressedScale, scaleXAnimationSpec) }
             launch { scaleYAnimation.animateTo(pressedScale, scaleYAnimationSpec) }
@@ -100,14 +115,14 @@ class DampedDragAnimation(
     }
 
     fun release() {
-        animationScope.launch {
-            // 等一帧，让 value 先追上 target 再收回复位动画（官方 awaitFrame）
-            withFrameNanos { }
+        releaseJob?.cancel()
+        releaseJob = animationScope.launch {
+            // 等一帧让 value 先追上 target 再收回复位动画
+            withFrameMillis { }
             if (value != targetValue) {
                 val threshold = (valueRange.endInclusive - valueRange.start) * 0.025f
                 snapshotFlow { valueAnimation.value }
-                    .filter { abs(it - valueAnimation.targetValue) < threshold }
-                    .first()
+                    .first { abs(it - valueAnimation.targetValue) < threshold }
             }
             launch { pressProgressAnimation.animateTo(0f, pressProgressAnimationSpec) }
             launch { scaleXAnimation.animateTo(initialScale, scaleXAnimationSpec) }
@@ -138,8 +153,8 @@ class DampedDragAnimation(
 
     private fun updateVelocity() {
         velocityTracker.addPosition(
-            System.currentTimeMillis(),
-            Offset(value, 0f)
+            nowMillis(),
+            Offset(value, 0f),
         )
         val targetVelocity = velocityTracker.calculateVelocity().x / (valueRange.endInclusive - valueRange.start)
         animationScope.launch { velocityAnimation.animateTo(targetVelocity, velocityAnimationSpec) }

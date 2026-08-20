@@ -22,7 +22,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -41,7 +40,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
@@ -85,20 +83,23 @@ data class LiquidGlassTab(
 internal val LiquidGlassTabScale =
     staticCompositionLocalOf { { 1f } }
 
-/** 单个 Tab 单元宽度（内容包裹，固定单元，窄胶囊） */
+/** 单个 Tab 单元宽度（固定，避免动态测量导致滑块越界/卡住） */
 private val LiquidGlassTabWidth = 88.dp
+
+/** 胶囊总宽 = 单元宽 × N + 两侧 4dp 内边距（固定值，几何确定） */
+private fun capsuleWidth(tabsCount: Int) = tabsCount * LiquidGlassTabWidth + 8.dp
 
 /**
  * 液态玻璃悬浮底栏（官方 LiquidBottomTabs / miuix 示例同款交互，内容包裹窄胶囊）：
  *
  * 1. 玻璃面板：真实 backdrop 采样（vibrancy 增色 + blur 实时模糊 + lens 边缘折射），
  *    常态保持顶部玻璃高光，按压时整条面板轻微放大
- * 2. 液态选中内胆：纯显示层，位置由 DampedDragAnimation 驱动，移动中按速度拉伸、
- *    到位回弹；长按/按压时色差折射 + 高光 + 投影 + 内阴影
+ * 2. 液态选中内胆：纯显示层，位置由 DampedDragAnimation 驱动，固定单元宽（88dp）
+ *    保证滑块永不出界；移动中按速度拉伸、到位回弹，按压时色差折射 + 高光 + 阴影
  * 3. 交互：面板整条即输入层（官方模型，不用 clickable）—— 点击 = 快速 down/up，
  *    由 onDragStarted 定位 + onDragStopped 提交；拖动 = 跟手 + 惯性回弹
- * 4. 内胆内容：捕获自"不可见"的 accent 层（图标+文字整体染成 MIUI 蓝，无任何输入修饰，
- *    不拦截点击），玻璃折射出选中 Tab 的内容，形成 HyperOS 液态玻璃标志性效果
+ * 4. 内胆内容：捕获自"不可见"的 accent 层（图标+文字整体染成 MIUI 蓝，无任何输入修饰），
+ *    玻璃折射出选中 Tab 的内容，形成 HyperOS 液态玻璃标志性效果
  */
 @Composable
 fun LiquidGlassBottomBar(
@@ -122,20 +123,17 @@ fun LiquidGlassBottomBar(
     val isLtr = LocalLayoutDirection.current == LayoutDirection.Ltr
     val animationScope = rememberCoroutineScope()
 
-    // 面板实测宽度（内容包裹）→ 单格宽度
-    var totalWidthPx by remember { mutableFloatStateOf(0f) }
-    val tabWidthPx = if (totalWidthPx > 0f) (totalWidthPx / tabsCount).coerceAtLeast(0f) else 0f
-    // 闭包内动态读取（remember 创建的 lambda 不会捕获旧值）
+    // 固定几何：胶囊总宽（px）与单格宽（px）——不依赖测量，滑块永不出界
+    val capsuleWidthPx = with(density) { capsuleWidth(tabsCount).toPx() }
+    val tabWidthPx = with(density) { LiquidGlassTabWidth.toPx() }
     val tabWidthPxState = rememberUpdatedState(tabWidthPx)
-    val totalWidthPxState = rememberUpdatedState(totalWidthPx)
     val onTabSelectedState = rememberUpdatedState(onTabSelected)
 
     /** 触摸点 x → 所在 Tab 索引（点击定位用） */
     fun indexAt(positionX: Float): Int {
         val tabWidthPx = tabWidthPxState.value
         if (tabWidthPx <= 0f) return 0
-        val logicalX = if (isLtr) positionX else totalWidthPxState.value - positionX
-        return (logicalX / tabWidthPx).toInt().coerceIn(0, tabsCount - 1)
+        return (positionX / tabWidthPx).toInt().coerceIn(0, tabsCount - 1)
     }
 
     var currentIndex by remember { mutableIntStateOf(selectedTabIndex()) }
@@ -143,13 +141,12 @@ fun LiquidGlassBottomBar(
     // 整条面板随拖动轻微位移（官方 4dp 液态偏移）
     val offsetAnimation = remember { Animatable(0f) }
     val rubberBandPx = with(density) { 4f.dp.toPx() }
-    val panelOffset by remember(rubberBandPx) {
+    val panelOffset by remember(rubberBandPx, capsuleWidthPx) {
         derivedStateOf {
-            val totalWidthPx = totalWidthPxState.value
-            if (totalWidthPx == 0f) {
+            if (capsuleWidthPx <= 0f) {
                 0f
             } else {
-                val fraction = (offsetAnimation.value / totalWidthPx).fastCoerceIn(-1f, 1f)
+                val fraction = (offsetAnimation.value / capsuleWidthPx).fastCoerceIn(-1f, 1f)
                 rubberBandPx * fraction.sign * EaseOut.transform(abs(fraction))
             }
         }
@@ -174,7 +171,7 @@ fun LiquidGlassBottomBar(
                     currentIndex = targetIndex
                     onTabSelectedState.value(targetIndex)
                 }
-                animateToValue(targetIndex.toFloat())
+                updateValue(targetIndex.toFloat())
                 animationScope.launch {
                     offsetAnimation.animateTo(
                         0f,
@@ -259,8 +256,8 @@ fun LiquidGlassBottomBar(
                 .then(interactiveHighlight.modifier)
                 .then(interactiveHighlight.gestureModifier)
                 .then(dampedDragAnimation.modifier)
+                .width(capsuleWidth(tabsCount))
                 .height(64f.dp)
-                .onSizeChanged { totalWidthPx = it.width.toFloat() }
                 .padding(4f.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -305,6 +302,7 @@ fun LiquidGlassBottomBar(
                         },
                         onDrawSurface = { drawRect(containerColor) },
                     )
+                    .width(capsuleWidth(tabsCount))
                     .height(56f.dp)
                     .padding(horizontal = 4f.dp)
                     .graphicsLayer(colorFilter = ColorFilter.tint(accentColor)),
@@ -321,61 +319,59 @@ fun LiquidGlassBottomBar(
         }
 
         // ── 3. 液态选中内胆（纯显示：combined backdrop = 屏幕内容 + accent 层折射） ──
-        if (tabWidthPx > 0f) {
-            Box(
-                Modifier
-                    .padding(horizontal = 4f.dp)
-                    .graphicsLayer {
-                        val progressOffset = dampedDragAnimation.value * tabWidthPx
-                        translationX =
-                            if (isLtr) progressOffset + panelOffset
-                            else -progressOffset + panelOffset
-                    }
-                    .drawBackdrop(
-                        backdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop),
-                        shape = { Capsule() },
-                        effects = {
-                            val progress = dampedDragAnimation.pressProgress
-                            lens(
-                                10f.dp.toPx() * progress,
-                                14f.dp.toPx() * progress,
-                                chromaticAberration = true,
-                            )
-                        },
-                        highlight = {
-                            Highlight.Default.copy(alpha = dampedDragAnimation.pressProgress)
-                        },
-                        shadow = {
-                            Shadow(alpha = dampedDragAnimation.pressProgress)
-                        },
-                        innerShadow = {
-                            InnerShadow(
-                                radius = 8f.dp * dampedDragAnimation.pressProgress,
-                                alpha = dampedDragAnimation.pressProgress,
-                            )
-                        },
-                        // 液态拉伸：速度越大内胆越扁长，到位回弹
-                        layerBlock = {
-                            scaleX = dampedDragAnimation.scaleX
-                            scaleY = dampedDragAnimation.scaleY
-                            val velocity = dampedDragAnimation.velocity / 10f
-                            scaleX /= 1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f)
-                            scaleY *= 1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f)
-                        },
-                        onDrawSurface = {
-                            val progress = dampedDragAnimation.pressProgress
-                            drawRect(
-                                if (isLightTheme) Color.Black.copy(alpha = 0.08f)
-                                else Color.White.copy(alpha = 0.08f),
-                                alpha = 1f - progress,
-                            )
-                            drawRect(Color.Black.copy(alpha = 0.03f * progress))
-                        },
-                    )
-                    .height(56f.dp)
-                    .width(with(density) { tabWidthPx.toDp() }),
-            )
-        }
+        Box(
+            Modifier
+                .padding(horizontal = 4f.dp)
+                .graphicsLayer {
+                    val progressOffset = dampedDragAnimation.value * tabWidthPx
+                    translationX =
+                        if (isLtr) progressOffset + panelOffset
+                        else -progressOffset + panelOffset
+                }
+                .drawBackdrop(
+                    backdrop = rememberCombinedBackdrop(backdrop, tabsBackdrop),
+                    shape = { Capsule() },
+                    effects = {
+                        val progress = dampedDragAnimation.pressProgress
+                        lens(
+                            10f.dp.toPx() * progress,
+                            14f.dp.toPx() * progress,
+                            chromaticAberration = true,
+                        )
+                    },
+                    highlight = {
+                        Highlight.Default.copy(alpha = dampedDragAnimation.pressProgress)
+                    },
+                    shadow = {
+                        Shadow(alpha = dampedDragAnimation.pressProgress)
+                    },
+                    innerShadow = {
+                        InnerShadow(
+                            radius = 8f.dp * dampedDragAnimation.pressProgress,
+                            alpha = dampedDragAnimation.pressProgress,
+                        )
+                    },
+                    // 液态拉伸：速度越大内胆越扁长，到位回弹
+                    layerBlock = {
+                        scaleX = dampedDragAnimation.scaleX
+                        scaleY = dampedDragAnimation.scaleY
+                        val velocity = dampedDragAnimation.velocity / 10f
+                        scaleX /= 1f - (velocity * 0.75f).fastCoerceIn(-0.2f, 0.2f)
+                        scaleY *= 1f - (velocity * 0.25f).fastCoerceIn(-0.2f, 0.2f)
+                    },
+                    onDrawSurface = {
+                        val progress = dampedDragAnimation.pressProgress
+                        drawRect(
+                            if (isLightTheme) Color.Black.copy(alpha = 0.08f)
+                            else Color.White.copy(alpha = 0.08f),
+                            alpha = 1f - progress,
+                        )
+                        drawRect(Color.Black.copy(alpha = 0.03f * progress))
+                    },
+                )
+                .height(56f.dp)
+                .width(LiquidGlassTabWidth),
+        )
     }
 }
 
