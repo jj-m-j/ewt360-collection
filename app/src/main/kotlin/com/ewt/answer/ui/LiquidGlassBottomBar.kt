@@ -12,7 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.onSizeChanged
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -40,7 +41,6 @@ import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
-import com.kyant.shapes.Capsule
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -69,7 +69,6 @@ fun LiquidGlassBottomBar(
     // 官方 Demo 配色：accent 为 MIUI 蓝
     val accentColor = if (isLight) Color(0xFF0088FF) else Color(0xFF0091FF)
     val surfaceColor = MiuixTheme.colorScheme.surface
-    val density = LocalDensity.current
 
     val scope = rememberCoroutineScope()
     val highlight = remember(scope) { InteractiveHighlight(scope) }
@@ -91,9 +90,9 @@ fun LiquidGlassBottomBar(
         modifier
             .navigationBarsPadding()
             .padding(horizontal = 24.dp, vertical = 10.dp)
-            .shadow(8.dp, Capsule, clip = false)
+            .shadow(8.dp, CircleShape, clip = false)
             .height(56.dp)
-            .clip(Capsule)
+            .clip(CircleShape)
             .onSizeChanged { barWidthPx = it.width },
         contentAlignment = Alignment.Center,
     ) {
@@ -103,7 +102,7 @@ fun LiquidGlassBottomBar(
                 .matchParentSize()
                 .drawBackdrop(
                     backdrop = backdrop,
-                    shape = { Capsule },
+                    shape = { CircleShape },
                     effects = {
                         vibrancy()
                         blur(4f.dp.toPx())
@@ -141,7 +140,7 @@ fun LiquidGlassBottomBar(
                 }
                 .drawBackdrop(
                     backdrop = backdrop,
-                    shape = { Capsule },
+                    shape = { CircleShape },
                     effects = {
                         val p = highlight.pressProgress
                         if (p > 0f) {
