@@ -120,7 +120,7 @@ fun AppRoot() {
         // 主页列表滚动位置（跨页面保留，返回不跳顶）
         val homeListState: LazyListState = rememberLazyListState()
 
-        // ── 预测式返回：手势进度驱动（参考 MIUIX NavDisplay） ──
+        // ── 预测式返回：手势进度驱动（参考 MIUIX NavDisplay MiuixDefault：下层 25% 视差 + 0.9→1.0 渐入） ──
         val backProgress = remember { Animatable(0f) }
         var showPrevLayer by remember { mutableStateOf(false) }
         var gestureCommitted by remember { mutableStateOf(false) }
@@ -138,7 +138,7 @@ fun AppRoot() {
         /**
          * 返回（预测式/系统键）：
          * 顶层瞬时切到上一页后，把 backProgress 从手势位置平滑动画回 0（整屏滑回原位），
-         * 背景层保持到动画结束才清理 —— 全程连续，不再瞬移。
+         * 背景层保持到动画结束才清理 —— 全程连续（渐入 + 视差），不瞬移。
          */
         fun goBack() {
             val prev = previous
@@ -218,23 +218,17 @@ fun AppRoot() {
             }
         }
 
-        // ── 双层渲染：背景=上一页（Main 常驻防瞬移），顶层=当前页（手势跟随） ──
+        // ── 双层渲染：背景=上一页（手势/动画渐入），顶层=当前页（手势跟随） ──
         Box(Modifier.fillMaxSize()) {
-            // 背景层：Main 常驻组合（alpha 控制），其他 prev 手势时组合
+            // 背景层（对齐 miuix MiuixDefault covered 层：25% 视差 + alpha 0.9→1.0 渐入）
             if (previous != null && (previous == Screen.Main || showPrevLayer)) {
                 Box(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
                             val p = backProgress.value
-                            if (previous == Screen.Main) {
-                                // Main 常驻背景：固定原位全不透明，避免返回动画期间位移/闪烁
-                                alpha = if (showPrevLayer) 1f else 0f
-                                translationX = 0f
-                            } else {
-                                alpha = 0.9f + 0.1f * p
-                                translationX = -0.25f * size.width * (1f - p)
-                            }
+                            alpha = if (showPrevLayer) 0.9f + 0.1f * p else 0f
+                            translationX = if (showPrevLayer) -0.25f * size.width * (1f - p) else 0f
                         },
                 ) {
                     RenderScreen(
@@ -262,16 +256,15 @@ fun AppRoot() {
                     )
                 }
             }
-            // 顶层：当前页（手势跟随）
+            // 顶层：当前页（手势跟随；纯全宽滑动，对齐 miuix，无缩放）
             Box(
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
                         val p = backProgress.value
                         translationX = size.width * p
-                        scaleX = 1f - 0.08f * p
-                        scaleY = 1f - 0.08f * p
                         if (p > 0f) {
+                            // 手势期间圆角裁切（NavDisplayEffects.cornerClip 同类）
                             shape = RoundedCornerShape(28.dp.toPx() * p)
                             clip = true
                         }
@@ -445,7 +438,7 @@ private fun MainLayer(
     onOpenDebug: () -> Unit,
     onLogout: () -> Unit,
 ) {
-    // 玻璃底栏的反射源：捕获整个 Tab 内容（列表滚动画面）
+    // 玻璃底栏 / 顶栏模糊的反射源：捕获整个 Tab 内容（列表滚动画面）
     val backdrop = rememberLayerBackdrop()
     // 稳定 lambda + 动态读取当前 tab（避免捕获旧值导致底栏不同步）
     val currentTab = rememberUpdatedState(tab)
@@ -470,6 +463,7 @@ private fun MainLayer(
                     accuracy = accuracy,
                     onOpenPaper = onOpenPaper,
                     onOpenLinkQuery = onOpenLinkQuery,
+                    backdrop = backdrop,
                 )
                 else -> AboutScreen(
                     accuracy = accuracy,
@@ -479,10 +473,11 @@ private fun MainLayer(
                     onFontEnabledChange = onFontEnabledChange,
                     onOpenDebug = onOpenDebug,
                     onLogout = onLogout,
+                    backdrop = backdrop,
                 )
             }
         }
-        // 液态玻璃悬浮底栏：内容包裹窄胶囊，居中悬浮，比旧版更窄、更高
+        // 液态玻璃悬浮底栏：内容包裹窄胶囊，居中悬浮
         LiquidGlassBottomBar(
             tabs = listOf(
                 LiquidGlassTab(icon = PaperTabIcon, label = "试卷"),
