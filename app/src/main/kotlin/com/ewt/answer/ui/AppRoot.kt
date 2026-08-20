@@ -32,6 +32,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -364,7 +365,7 @@ fun AppRoot() {
                                 showFontPrompt = false
                             },
                         )
-                    }
+                    )
                 }
             }
         }
@@ -446,8 +447,9 @@ private fun MainLayer(
 ) {
     // 玻璃底栏的反射源：捕获整个 Tab 内容（列表滚动画面）
     val backdrop = rememberLayerBackdrop()
-    // 稳定引用，避免每次重组新建 lambda 导致底栏内部 LaunchedEffect 重启
-    val selectedTabIndex = remember { { tab } }
+    // 稳定 lambda + 动态读取当前 tab（避免捕获旧值导致底栏不同步）
+    val currentTab = rememberUpdatedState(tab)
+    val selectedTabIndex = remember { { currentTab.value } }
 
     Box(Modifier.fillMaxSize()) {
         AnimatedContent(
