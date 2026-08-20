@@ -55,6 +55,6 @@ dependencies {
     // 图片加载
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
-    // Liquid Glass（backdrop）：Compose 离屏层模糊/折射/高光/阴影
-    implementation("io.github.kyant0:backdrop:2.0.0-alpha03")
+    // Liquid Glass（backdrop）2.0.0 正式版：依赖 compose 1.11.0 与当前项目完全匹配
+    implementation("io.github.kyant0:backdrop:2.0.0")
 }
