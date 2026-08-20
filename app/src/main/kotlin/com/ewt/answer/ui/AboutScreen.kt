@@ -10,11 +10,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RectangleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,6 +45,9 @@ fun AboutScreen(
     onLogout: () -> Unit,
     backdrop: LayerBackdrop,
 ) {
+    // 顶栏玻璃底色：组合上下文提前捕获（onDrawSurface 为绘制 lambda，非组合上下文）
+    val glassSurface = MiuixTheme.colorScheme.surface
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -55,7 +58,7 @@ fun AboutScreen(
                     shape = { RectangleShape },
                     effects = { blur(10f.dp.toPx()) },
                     onDrawSurface = {
-                        drawRect(MiuixTheme.colorScheme.surface.copy(alpha = 0.62f))
+                        drawRect(glassSurface.copy(alpha = 0.62f))
                     },
                 ),
                 color = Color.Transparent,

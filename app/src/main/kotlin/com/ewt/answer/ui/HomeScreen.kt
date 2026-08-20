@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RectangleShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -28,6 +27,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -81,6 +81,9 @@ fun HomeScreen(
     var brushProgress by remember { mutableStateOf<String?>(null) }
     var brushResult by remember { mutableStateOf<String?>(null) }
 
+    // 顶栏玻璃底色：组合上下文提前捕获（onDrawSurface 为绘制 lambda，非组合上下文）
+    val glassSurface = MiuixTheme.colorScheme.surface
+
     val searchState = rememberTextFieldState()
     LaunchedEffect(searchQuery) {
         if (searchState.text.toString() != searchQuery) {
@@ -108,7 +111,7 @@ fun HomeScreen(
                     shape = { RectangleShape },
                     effects = { blur(10f.dp.toPx()) },
                     onDrawSurface = {
-                        drawRect(MiuixTheme.colorScheme.surface.copy(alpha = 0.62f))
+                        drawRect(glassSurface.copy(alpha = 0.62f))
                     },
                 ),
                 color = Color.Transparent,

@@ -87,7 +87,7 @@ internal val LiquidGlassTabScale =
 private val LiquidGlassTabWidth = 88.dp
 
 /** 胶囊总宽 = 单元宽 × N + 两侧 4dp 内边距（固定值，几何确定） */
-private fun capsuleWidth(tabsCount: Int) = tabsCount * LiquidGlassTabWidth + 8.dp
+private fun capsuleWidth(tabsCount: Int) = LiquidGlassTabWidth * tabsCount + 8.dp
 
 /**
  * 液态玻璃悬浮底栏（官方 LiquidBottomTabs / miuix 示例同款交互，内容包裹窄胶囊）：
