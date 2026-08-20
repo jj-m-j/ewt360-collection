@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -442,15 +443,16 @@ private fun MainLayer(
     onOpenDebug: () -> Unit,
     onLogout: () -> Unit,
 ) {
-    // 捕获 Tab 内容（不含底栏），供底栏模糊
+    // 捕获 Tab 内容（全屏，含底栏区域），供底栏模糊
     val tabsBackdrop = rememberLayerBackdrop()
 
     Box(Modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = tab,
+            // 注意：不加 bottom padding——快照必须覆盖全屏（含底栏区域），
+            // 否则底栏背后是空白（白底）。底部间距由各页面列表 contentPadding 处理。
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = 74.dp)
                 .layerBackdrop(tabsBackdrop),
             transitionSpec = {
                 fadeIn(tween(180)).togetherWith(fadeOut(tween(120)))
@@ -487,7 +489,7 @@ private fun MainLayer(
     }
 }
 
-/** 悬浮胶囊底栏：backdrop 离屏层模糊 + 半透明 Surface + 清晰文字（参考 miuix FloatingNavigationBar） */
+/** 悬浮胶囊底栏：backdrop 离屏层模糊 + 半透明 Surface + 清晰文字（居中短胶囊） */
 @Composable
 private fun BlurredTabBar(
     tab: Int,
@@ -502,31 +504,35 @@ private fun BlurredTabBar(
 
     Box(
         modifier
-            .padding(horizontal = 36.dp, vertical = 10.dp)
+            .padding(horizontal = 24.dp, vertical = 10.dp)
             .shadow(8.dp, RoundedCornerShape(50.dp))
-            .fillMaxWidth()
             .height(52.dp)
             .clip(RoundedCornerShape(50.dp))
             .drawBackdrop(
                 backdrop = backdrop,
                 shape = { RoundedCornerShape(50.dp) },
                 effects = { blur(radiusPx) },
-                // 半透明 Surface（让模糊透出，参考 miuix 0.4-0.5 级别）
-                onDrawSurface = { drawRect(surfaceColor.copy(alpha = 0.5f)) },
+                // 半透明圆角 Surface（让模糊透出；圆角矩形防方形白底）
+                onDrawSurface = {
+                    drawRoundRect(
+                        color = surfaceColor.copy(alpha = 0.35f),
+                        cornerRadius = CornerRadius(cornerPx),
+                    )
+                },
             ),
     ) {
-        Row(Modifier.fillMaxSize()) {
+        Row(Modifier.padding(horizontal = 8.dp)) {
             TabItem(
                 text = "试卷",
                 selected = tab == TAB_PAPERS,
                 onClick = { onTabSelect(TAB_PAPERS) },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.padding(horizontal = 20.dp),
             )
             TabItem(
                 text = "关于",
                 selected = tab == TAB_ABOUT,
                 onClick = { onTabSelect(TAB_ABOUT) },
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.padding(horizontal = 20.dp),
             )
         }
     }
