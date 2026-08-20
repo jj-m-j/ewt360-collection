@@ -10,7 +10,6 @@ import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -20,6 +19,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -40,6 +40,7 @@ import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +59,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -71,6 +73,7 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.UserInfo
+import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
@@ -85,7 +88,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.NumberPicker
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -93,7 +95,6 @@ import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -148,7 +149,7 @@ fun HomeScreen(
 
     var showBrushDialog by remember { mutableStateOf(false) }
 
-    // 顶栏独立 backdrop：只捕获 Scaffold 内容区（列表），不含顶栏自身 —— 避免 RenderNode 循环引用崩溃
+    // 顶栏独立 backdrop：捕获 Scaffold 内容区（列表），材质与底部 LiquidGlass 同源（blur 10dp + surface 62%）
     val topBarBackdrop = rememberLayerBackdrop()
     val glassSurface = MiuixTheme.colorScheme.surface
 
@@ -165,6 +166,16 @@ fun HomeScreen(
     }
 
     LaunchedEffect(Unit) { vm.load() }
+
+    // ── 滚动收缩进度：基于列表滚动距离连续插值（非阈值切换） ──
+    val collapseDistance = with(LocalDensity.current) { 64.dp.toPx() }
+    val collapseProgress by remember(listState) {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val first = info.visibleItemsInfo.firstOrNull() ?: return@derivedStateOf 0f
+            if (first.index > 0) 1f else (-first.offset / collapseDistance).coerceIn(0f, 1f)
+        }
+    }
 
     // ── 筛选计算（基于已加载试卷） ──
     val readyGroups = (uiState as? HomeViewModel.UiState.Ready)?.groups
@@ -206,25 +217,14 @@ fun HomeScreen(
         if (fromPapers.isNotEmpty()) fromPapers else recentDays(7)
     }
 
-    val scrollBehavior = MiuixScrollBehavior()
-
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = "试卷列表",
-                subtitle = userInfo?.realName?.let { "你好，$it" } ?: "",
-                titlePadding = 16.dp,
-                // 液态玻璃顶栏：模糊内容层（Android 12+），低版本降级为半透明底色 —— 材质完全保留
-                modifier = Modifier.drawBackdrop(
-                    backdrop = topBarBackdrop,
-                    shape = { RectangleShape },
-                    effects = { blur(10f.dp.toPx()) },
-                    onDrawSurface = {
-                        drawRect(glassSurface.copy(alpha = 0.62f))
-                    },
-                ),
-                color = Color.Transparent,
-                scrollBehavior = scrollBehavior,
+            // 自定义滚动收缩 Header：LiquidGlass 材质完全保留，只动容器尺寸与内部布局
+            CollapsingHeader(
+                progress = collapseProgress,
+                userInfo = userInfo,
+                backdrop = topBarBackdrop,
+                glassSurface = glassSurface,
             )
         },
     ) { padding ->
@@ -234,9 +234,11 @@ fun HomeScreen(
                 .fillMaxSize()
                 .layerBackdrop(topBarBackdrop),
         ) {
+            // 下拉刷新：指示器通过 contentPadding.top 明显下移，远离状态栏（源码 offset(y=contentPadding.top)）
             PullToRefresh(
                 isRefreshing = refreshing,
                 onRefresh = { vm.load(force = true) },
+                contentPadding = PaddingValues(top = 56.dp),
             ) {
                 LazyColumn(
                     state = listState,
@@ -258,7 +260,7 @@ fun HomeScreen(
                             onRefresh = { vm.load(force = true) },
                         )
                     }
-                    // ── 搜索 / 筛选：搜索框 + 三条杠（同一行，明确归属） ──
+                    // ── 搜索 / 筛选：搜索框 + 三条杠（同一行，弱化视觉权重） ──
                     item(key = "search") {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -270,7 +272,7 @@ fun HomeScreen(
                                 useLabelAsPlaceholder = true,
                                 modifier = Modifier.weight(1f),
                             )
-                            Spacer(Modifier.width(4.dp))
+                            Spacer(Modifier.width(2.dp))
                             FilterRow(
                                 dateFilter = dateFilter,
                                 subjectFilter = subjectFilter,
@@ -302,7 +304,6 @@ fun HomeScreen(
 
                     when (val state = uiState) {
                         HomeViewModel.UiState.Loading -> {
-                            // 扫描状态：融入页面结构（轻量状态行，非孤立文字）
                             item(key = "scan_status") {
                                 ScanStatusRow(statusText.ifBlank { "正在扫描作业…" })
                             }
@@ -406,6 +407,73 @@ fun HomeScreen(
     }
 }
 
+// ── 滚动收缩 Header（LiquidGlass 材质保留，容器与内部布局可动） ─────
+
+@Composable
+private fun CollapsingHeader(
+    progress: Float,
+    userInfo: UserInfo?,
+    backdrop: LayerBackdrop,
+    glassSurface: Color,
+) {
+    val headerHeight = lerp(92.dp, 52.dp, progress)
+    val titleSize = lerp(26.sp, 17.sp, progress)
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(headerHeight)
+            // LiquidGlass 材质与底部同源：blur 10dp + surface 62%（完全保留）
+            .drawBackdrop(
+                backdrop = backdrop,
+                shape = { RectangleShape },
+                effects = { blur(10f.dp.toPx()) },
+                onDrawSurface = {
+                    drawRect(glassSurface.copy(alpha = 0.62f))
+                },
+            ),
+    ) {
+        val containerW = maxWidth.toPx()
+        var columnW by remember { mutableIntStateOf(0) }
+        Box(
+            Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .onSizeChanged { columnW = it.width }
+                    .graphicsLayer {
+                        // progress=0 时标题区位于左侧 16dp；progress=1 时水平居中（连续插值）
+                        translationX = (1f - progress) * -(containerW / 2f - 16.dp.toPx() - columnW / 2f)
+                    },
+            ) {
+                Text(
+                    text = "试卷列表",
+                    fontSize = titleSize,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                )
+                Spacer(Modifier.height(lerp(4.dp, 0.dp, progress)))
+                // 问候语：随滚动淡出 + 上移 8dp + 轻微缩小（始终占位保证标题垂直稳定）
+                Text(
+                    text = userInfo?.realName?.let { "你好，$it" } ?: "",
+                    fontSize = 13.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                    modifier = Modifier.graphicsLayer {
+                        alpha = 1f - progress
+                        translationY = -8.dp.toPx() * progress
+                        scaleX = 1f - 0.04f * progress
+                        scaleY = 1f - 0.04f * progress
+                    },
+                )
+            }
+        }
+    }
+}
+
 // ── 任务工具区（全部任务 + 刷新） ────────────────────────────────
 
 @Composable
@@ -415,7 +483,7 @@ private fun RefreshRow(
     subjectFilter: String?,
     onRefresh: () -> Unit,
 ) {
-    // 刷新时图标持续旋转（轻量状态反馈，不占额外空间）
+    // 刷新时图标持续旋转（轻量状态反馈）
     val infinite = rememberInfiniteTransition(label = "refresh_spin")
     val angle by infinite.animateFloat(
         initialValue = 0f,
@@ -439,7 +507,7 @@ private fun RefreshRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onRefresh, modifier = Modifier.size(36.dp)) {
+        IconButton(onClick = onRefresh, modifier = Modifier.size(34.dp)) {
             Icon(
                 imageVector = RefreshIcon,
                 contentDescription = "刷新",
@@ -452,7 +520,7 @@ private fun RefreshRow(
     }
 }
 
-// ── 搜索 / 筛选（三条杠锚定搜索框右侧） ───────────────────────────
+// ── 搜索 / 筛选（三条杠锚定搜索框右侧，弱化视觉权重） ─────────────
 
 @Composable
 private fun FilterRow(
@@ -465,7 +533,6 @@ private fun FilterRow(
     onClear: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    // 阶段一：按钮 Press 反馈（极轻微压缩 0.97，极短）
     val btnScale = remember { Animatable(1f) }
     var popupVisible by remember { mutableStateOf(false) }
     var popupExiting by remember { mutableStateOf(false) }
@@ -485,11 +552,14 @@ private fun FilterRow(
             Icon(
                 imageVector = FilterListIcon,
                 contentDescription = "筛选",
-                tint = MiuixTheme.colorScheme.primary,
-                modifier = Modifier.graphicsLayer {
-                    scaleX = btnScale.value
-                    scaleY = btnScale.value
-                },
+                // 弱化：次级文字色，不再抢眼
+                tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer {
+                        scaleX = btnScale.value
+                        scaleY = btnScale.value
+                    },
             )
         }
         if (popupVisible) {
@@ -522,9 +592,7 @@ private fun FilterRow(
 private enum class FilterPane { Main, Date, Subject }
 
 /**
- * 三条杠弹层 —— Circle → Capsule → Dialog 连续 Morph：
- * 打开：小圆 → 胶囊 → 对话框（同 Surface 尺寸+圆角连续变化，CubicBezier(0.2,0,0,1)），内容 75% 后浮现。
- * 关闭：内容先退场 → 反向 Morph 收回小圆（略快）。
+ * 三条杠弹层 —— Circle → Capsule → Dialog 连续 Morph（缩小版：固定 260dp，滚轮 3 项）
  */
 @Composable
 private fun FilterPopupCard(
@@ -542,46 +610,39 @@ private fun FilterPopupCard(
     var draftDate by remember(dateFilter) { mutableStateOf(dateFilter) }
     var draftSubject by remember(subjectFilter) { mutableStateOf(subjectFilter) }
 
-    // null = 全部
     val dateOptions = remember(dates) { listOf<String?>(null) + dates }
     val subjectOptions = remember(subjects) { listOf<String?>(null) + subjects }
 
-    // Morph 进度：0 = 按钮旁小圆，1 = 完整对话框
     val morph = remember { Animatable(0f) }
-    // 内容浮现（进入，容器展开约 75% 后启动）
     val contentProgress = remember { Animatable(0f) }
-    // 内容退场（关闭第一步）
     val exitContent = remember { Animatable(0f) }
 
     val morphEase = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
-    // 打开：小圆 → 胶囊 → 对话框（连续 Morph，尺寸 + 圆角同源同曲线）
     LaunchedEffect(Unit) {
         if (!exiting) {
             morph.animateTo(1f, tween(300, easing = morphEase))
         }
     }
-    // 打开：容器接近稳定（约 75%）后内容轻柔浮现
     LaunchedEffect(Unit) {
         if (!exiting) {
-            delay(220)
+            delay(200)
             contentProgress.animateTo(1f, tween(150, easing = LinearOutSlowInEasing))
         }
     }
-    // 关闭：内容先快速消失 → 同一 Surface 反向 Morph 收回小圆（略快于打开）
     LaunchedEffect(exiting) {
         if (exiting) {
             exitContent.animateTo(1f, tween(90, easing = LinearOutSlowInEasing))
-            morph.animateTo(0f, tween(220, easing = FastOutLinearInEasing))
+            morph.animateTo(0f, tween(200, easing = FastOutLinearInEasing))
             onExitFinished()
         }
     }
 
     val p = morph.value
-    // 尺寸连续变化：小圆(48×48) → 对话框(280×344)；圆角：24 → 20
-    val w = lerp(48.dp, 280.dp, p)
-    val h = lerp(48.dp, 344.dp, p)
-    val corner = lerp(24.dp, 20.dp, p)
+    // 缩小版：小圆(44×44) → 对话框(260×240)，圆角 22 → 20
+    val w = lerp(44.dp, 260.dp, p)
+    val h = lerp(44.dp, 240.dp, p)
+    val corner = lerp(22.dp, 20.dp, p)
     val contentAlpha = (contentProgress.value * (1f - exitContent.value)).coerceIn(0f, 1f)
 
     Card(
@@ -590,15 +651,12 @@ private fun FilterPopupCard(
             .height(h)
             .clip(RoundedCornerShape(corner))
             .graphicsLayer {
-                // Origin 固定在弹层右上角（三条杠所在侧）：从小圆“长成”对话框 / “收回”小圆
                 transformOrigin = TransformOrigin(1f, 0f)
-                // Alpha 仅轻微辅助，主体是 Shape Morph
                 alpha = (0.75f + 0.25f * p).coerceIn(0f, 1f)
             },
         cornerRadius = corner,
-        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
     ) {
-        // 内容层：与容器分阶段，容器接近稳定后浮现
         Column(
             Modifier
                 .fillMaxSize()
@@ -607,13 +665,12 @@ private fun FilterPopupCard(
                     translationY = (1f - contentAlpha) * 6f.dp.toPx()
                 },
         ) {
-            // 一级 ↔ 二级面板：滑动 + 淡入淡出切换（FastOutSlowIn 曲线）
             AnimatedContent(
                 targetState = pane,
                 transitionSpec = {
-                    (slideInHorizontally(tween(240, easing = FastOutSlowInEasing)) { it / 3 } + fadeIn(tween(200)))
+                    (slideInHorizontally(tween(220, easing = FastOutSlowInEasing)) { it / 3 } + fadeIn(tween(180)))
                         .togetherWith(
-                            slideOutHorizontally(tween(180, easing = FastOutSlowInEasing)) { -it / 3 } + fadeOut(tween(140)),
+                            slideOutHorizontally(tween(160, easing = FastOutSlowInEasing)) { -it / 3 } + fadeOut(tween(120)),
                         )
                 },
                 label = "filter_pane",
@@ -627,7 +684,7 @@ private fun FilterPopupCard(
                                 fontWeight = FontWeight.Medium,
                                 color = MiuixTheme.colorScheme.onSurface,
                             )
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(6.dp))
                             FilterOptionRow(
                                 label = "日期",
                                 value = dateFilter ?: "全部",
@@ -648,12 +705,13 @@ private fun FilterPopupCard(
                         }
                         FilterPane.Date -> {
                             PickerHeader(title = "选择日期", onBack = { pane = FilterPane.Main })
-                            Spacer(Modifier.height(6.dp))
+                            Spacer(Modifier.height(4.dp))
                             NumberPicker(
                                 value = dateOptions.indexOf(draftDate).coerceAtLeast(0),
                                 onValueChange = { draftDate = dateOptions[it] },
                                 range = 0..dateOptions.lastIndex,
                                 label = { dateOptions[it] ?: "全部" },
+                                visibleItemCount = 3,
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Spacer(Modifier.weight(1f))
@@ -686,12 +744,13 @@ private fun FilterPopupCard(
                         }
                         FilterPane.Subject -> {
                             PickerHeader(title = "选择学科", onBack = { pane = FilterPane.Main })
-                            Spacer(Modifier.height(6.dp))
+                            Spacer(Modifier.height(4.dp))
                             NumberPicker(
                                 value = subjectOptions.indexOf(draftSubject).coerceAtLeast(0),
                                 onValueChange = { draftSubject = subjectOptions[it] },
                                 range = 0..subjectOptions.lastIndex,
                                 label = { subjectOptions[it] ?: "全部" },
+                                visibleItemCount = 3,
                                 modifier = Modifier.fillMaxWidth(),
                             )
                             Spacer(Modifier.weight(1f))
@@ -735,7 +794,7 @@ private fun PickerHeader(title: String, onBack: () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack, modifier = Modifier.size(32.dp)) {
+        IconButton(onClick = onBack, modifier = Modifier.size(30.dp)) {
             Icon(
                 imageVector = MiuixIcons.Basic.ArrowRight,
                 contentDescription = "返回",
@@ -757,8 +816,8 @@ private fun FilterOptionRow(label: String, value: String, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp),
-        insideMargin = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
+            .padding(vertical = 2.dp),
+        insideMargin = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
         onClick = onClick,
     ) {
         Row(
@@ -781,21 +840,22 @@ private fun FilterOptionRow(label: String, value: String, onClick: () -> Unit) {
                 imageVector = MiuixIcons.Basic.ArrowRight,
                 contentDescription = null,
                 tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                modifier = Modifier.size(16.dp),
             )
         }
     }
 }
 
-// ── 快捷操作 ──────────────────────────────────────────────────
+// ── 快捷操作（紧凑） ──────────────────────────────────────────
 
-/** 一键刷今日入口卡片（紧凑） */
+/** 一键刷今日入口卡片 */
 @Composable
 private fun BrushTodayEntry(brushing: Boolean, progress: String, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp),
-        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
         onClick = onClick,
     ) {
         Row(
@@ -829,14 +889,14 @@ private fun BrushTodayEntry(brushing: Boolean, progress: String, onClick: () -> 
     }
 }
 
-/** 粘贴链接查询入口卡片（紧凑） */
+/** 粘贴链接查询入口卡片 */
 @Composable
 private fun LinkQueryEntry(onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp),
-        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
         onClick = onClick,
     ) {
         Row(
@@ -963,10 +1023,10 @@ private fun PaperRow(
                     fontWeight = FontWeight.Medium,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
+                    lineHeight = 21.sp,
                     color = MiuixTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.height(3.dp))
-                // 课程信息（作业名） · 学科 · 题数
                 val countText = count?.takeIf { it > 0 }?.let { "共 $it 题" }
                     ?: paper.questionCount.takeIf { it != "?" }?.let { "共 $it 题" }
                     ?: ""
