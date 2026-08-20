@@ -41,7 +41,6 @@ import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
-import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
@@ -65,7 +64,6 @@ fun CourseScreen(
     val brushingAll by vm.brushingAll.collectAsState()
     val summary by vm.summary.collectAsState()
     val statusText by vm.statusText.collectAsState()
-    val refreshing by vm.refreshing.collectAsState()
     val context = LocalContext.current
 
     val topBarBackdrop = rememberLayerBackdrop()
@@ -84,10 +82,8 @@ fun CourseScreen(
 
     Scaffold(
         topBar = {
-            // 共享液态玻璃滚动收缩顶栏（与试卷/设置页同一套设计逻辑）
             CollapsingHeaderBar(
                 title = "课程",
-                // 副标题：当前并发路数（与试卷页"你好，xx"同样的副标题逻辑）
                 subtitle = "当前并发 ${CourseRepository.burstSize} 路",
                 progress = collapseProgress,
                 backdrop = topBarBackdrop,
@@ -109,124 +105,117 @@ fun CourseScreen(
                 .fillMaxSize()
                 .layerBackdrop(topBarBackdrop),
         ) {
-            // miuix 原生下拉刷新
-            PullToRefresh(
-                isRefreshing = refreshing,
-                onRefresh = { vm.load(force = true) },
-                contentPadding = PaddingValues(top = 6.dp),
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = padding.calculateTopPadding() + 8.dp,
+                    bottom = padding.calculateBottomPadding() + 24.dp,
+                ),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        end = 16.dp,
-                        top = padding.calculateTopPadding() + 8.dp,
-                        bottom = padding.calculateBottomPadding() + 24.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    // 状态条 + 操作行（随页面滑动，非顶栏部分）
-                    item(key = "course_status") {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp),
-                            insideMargin = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                // 状态条 + 操作行（随页面滑动，非顶栏部分）
+                item(key = "course_status") {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 6.dp),
+                        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                    ) {
+                        Text(
+                            text = when {
+                                brushingAll && summary.isNotBlank() -> "批量刷课中：$summary"
+                                uiState is com.ewt.answer.ui.CourseViewModel.UiState.Loading -> statusText.ifBlank { "扫描中…" }
+                                else -> "点击课时开始刷课（当前并发 ${CourseRepository.burstSize} 路）"
+                            },
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                        )
+                    }
+                }
+                item(key = "course_actions") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Button(
+                            onClick = { vm.brushAll() },
+                            enabled = !brushingAll && uiState is com.ewt.answer.ui.CourseViewModel.UiState.Ready,
+                            modifier = Modifier.weight(1f),
                         ) {
-                            Text(
-                                text = when {
-                                    brushingAll && summary.isNotBlank() -> "批量刷课中：$summary"
-                                    uiState is com.ewt.answer.ui.CourseViewModel.UiState.Loading -> statusText.ifBlank { "扫描中…" }
-                                    else -> "点击课时开始刷课（当前并发 ${CourseRepository.burstSize} 路）"
-                                },
-                                fontSize = 12.sp,
-                                color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                            Text(if (brushingAll) "批量刷课中…" else "刷全部未完成", fontSize = 14.sp)
+                        }
+                        if (brushingAll) {
+                            Spacer(Modifier.width(10.dp))
+                            TextButton(
+                                text = "停止",
+                                onClick = { vm.stop() },
                             )
                         }
                     }
-                    item(key = "course_actions") {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Button(
-                                onClick = { vm.brushAll() },
-                                enabled = !brushingAll && uiState is com.ewt.answer.ui.CourseViewModel.UiState.Ready,
-                                modifier = Modifier.weight(1f),
+                }
+
+                when (val state = uiState) {
+                    com.ewt.answer.ui.CourseViewModel.UiState.Loading -> {
+                        item(key = "course_loading") {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 40.dp),
+                                contentAlignment = Alignment.Center,
                             ) {
-                                Text(if (brushingAll) "批量刷课中…" else "刷全部未完成", fontSize = 14.sp)
+                                CircularProgressIndicator()
                             }
-                            if (brushingAll) {
-                                Spacer(Modifier.width(10.dp))
-                                TextButton(
-                                    text = "停止",
-                                    onClick = { vm.stop() },
+                        }
+                        if (statusText.isNotBlank()) {
+                            item(key = "course_loading_text") {
+                                Text(
+                                    text = statusText,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Center,
+                                    fontSize = 12.sp,
+                                    color = MiuixTheme.colorScheme.onBackgroundVariant,
                                 )
                             }
                         }
                     }
-
-                    when (val state = uiState) {
-                        com.ewt.answer.ui.CourseViewModel.UiState.Loading -> {
-                            item(key = "course_loading") {
-                                Box(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 40.dp),
-                                    contentAlignment = Alignment.Center,
-                                ) {
-                                    CircularProgressIndicator()
-                                }
-                            }
-                            if (statusText.isNotBlank()) {
-                                item(key = "course_loading_text") {
-                                    Text(
-                                        text = statusText,
-                                        modifier = Modifier.fillMaxWidth(),
-                                        textAlign = TextAlign.Center,
-                                        fontSize = 12.sp,
-                                        color = MiuixTheme.colorScheme.onBackgroundVariant,
-                                    )
-                                }
+                    is com.ewt.answer.ui.CourseViewModel.UiState.Error -> {
+                        item(key = "course_error") {
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 48.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Text(
+                                    state.message,
+                                    fontSize = 14.sp,
+                                    color = MiuixTheme.colorScheme.error,
+                                    textAlign = TextAlign.Center,
+                                )
+                                Spacer(Modifier.height(12.dp))
+                                TextButton(
+                                    text = "重试",
+                                    onClick = { vm.load(force = true) },
+                                )
                             }
                         }
-                        is com.ewt.answer.ui.CourseViewModel.UiState.Error -> {
-                            item(key = "course_error") {
-                                Column(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 48.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                ) {
-                                    Text(
-                                        state.message,
-                                        fontSize = 14.sp,
-                                        color = MiuixTheme.colorScheme.error,
-                                        textAlign = TextAlign.Center,
-                                    )
-                                    Spacer(Modifier.height(12.dp))
-                                    TextButton(
-                                        text = "重试",
-                                        onClick = { vm.load(force = true) },
-                                    )
-                                }
+                    }
+                    is com.ewt.answer.ui.CourseViewModel.UiState.Ready -> {
+                        state.groups.forEach { group ->
+                            item(key = "group_${group.homeworkTitle}") {
+                                SmallTitle(text = group.homeworkTitle)
                             }
-                        }
-                        is com.ewt.answer.ui.CourseViewModel.UiState.Ready -> {
-                            state.groups.forEach { group ->
-                                item(key = "group_${group.homeworkTitle}") {
-                                    SmallTitle(text = group.homeworkTitle)
-                                }
-                                items(group.lessons, key = { "lesson_${it.lessonId}" }) { lesson ->
-                                    val ui = lessons[lesson.lessonId]
-                                    LessonCard(
-                                        ui = ui,
-                                        onClick = { vm.brushLesson(lesson) },
-                                    )
-                                }
+                            items(group.lessons, key = { "lesson_${it.lessonId}" }) { lesson ->
+                                val ui = lessons[lesson.lessonId]
+                                LessonCard(
+                                    ui = ui,
+                                    onClick = { vm.brushLesson(lesson) },
+                                )
                             }
                         }
                     }
