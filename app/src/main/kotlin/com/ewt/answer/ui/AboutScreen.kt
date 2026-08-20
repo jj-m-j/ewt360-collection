@@ -90,14 +90,14 @@ fun AboutScreen(
                 ) {
                     Column {
                         Text(
-                            text = "EWT360 答案查询",
+                            text = "去你妈的e网通",
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Medium,
                             color = MiuixTheme.colorScheme.onSurface,
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "v1.0.0 · MIUIX 风格 · 答案与解析来自 EWT360 官方接口",
+                            text = "Fuck Ewt · v1.0.0 · MIUIX 风格 · 答案与解析来自 EWT360 官方接口",
                             fontSize = 12.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
@@ -194,14 +194,14 @@ fun AboutPlaceholderScreen(onBack: () -> Unit) {
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "关于页面建设中",
+                    text = "去你妈的e网通",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium,
                     color = MiuixTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    text = "敬请期待",
+                    text = "关于页面建设中，敬请期待",
                     fontSize = 13.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
