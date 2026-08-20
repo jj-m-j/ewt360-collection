@@ -48,18 +48,22 @@ class CourseViewModel(private val repo: CourseRepository) : ViewModel() {
     private val _statusText = MutableStateFlow("")
     val statusText: StateFlow<String> = _statusText
 
+    /** 下拉刷新状态 */
+    private val _refreshing = MutableStateFlow(false)
+    val refreshing: StateFlow<Boolean> = _refreshing
+
     private var loadJob: Job? = null
     private var brushJob: Job? = null
 
     /**
      * 加载课程列表。
-     * 注意：初始 _uiState 是 Loading，guard 不能拦截 Loading（否则首次加载永不执行）。
-     * 用 loadJob 防重入；Ready 且非强制时跳过。
+     * 初始 _uiState 是 Loading，guard 不能拦截 Loading（否则首次加载永不执行）。
      */
     fun load(force: Boolean = false) {
         if (!force && _uiState.value is UiState.Ready) return
         if (loadJob?.isActive == true) return
         loadJob = viewModelScope.launch {
+            _refreshing.value = true
             _uiState.value = UiState.Loading
             try {
                 val list = repo.scanVideoLessons { _statusText.value = it }
@@ -75,6 +79,8 @@ class CourseViewModel(private val repo: CourseRepository) : ViewModel() {
                 throw e
             } catch (e: Exception) {
                 _uiState.value = UiState.Error(e.message ?: "加载失败，请检查网络")
+            } finally {
+                _refreshing.value = false
             }
         }
     }
