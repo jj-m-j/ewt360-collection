@@ -23,8 +23,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -47,13 +49,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -67,10 +67,6 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.UserInfo
-import com.kyant.backdrop.backdrops.layerBackdrop
-import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -81,16 +77,14 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.NumberPicker
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
+import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
 
@@ -104,20 +98,6 @@ private val FilterListIcon: ImageVector by lazy {
         viewportHeight = 24f,
     ).addPath(
         pathData = addPathNodes("M24,10H0V12H24V10ZM24,6H0V8H24V6ZM0,16H24V14H0V16Z"),
-        fill = SolidColor(Color.Black),
-    ).build()
-}
-
-/** 刷新图标（material refresh，静态） */
-private val RefreshIcon: ImageVector by lazy {
-    ImageVector.Builder(
-        name = "Refresh",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
-    ).addPath(
-        pathData = addPathNodes("M17.65,6.35C16.2,4.9 14.21,4 12,4c-4.42,0 -7.99,3.58 -7.99,8s3.57,8 7.99,8c3.73,0 6.84,-2.55 7.73,-6h-2.08c-0.82,2.33 -3.04,4 -5.65,4 -3.31,0 -6,-2.69 -6,-6s2.69,-6 6,-6c1.66,0 3.14,0.69 4.22,1.78L13,11h7V4l-2.35,2.35z"),
         fill = SolidColor(Color.Black),
     ).build()
 }
@@ -142,10 +122,6 @@ fun HomeScreen(
     val brushResult by vm.brushResult.collectAsState()
 
     var showBrushDialog by remember { mutableStateOf(false) }
-
-    // 顶栏独立 backdrop：捕获 Scaffold 内容区（列表），材质与底部 LiquidGlass 同源
-    val topBarBackdrop = rememberLayerBackdrop()
-    val glassSurface = MiuixTheme.colorScheme.surface
 
     val searchState = rememberTextFieldState()
     LaunchedEffect(searchQuery) {
@@ -200,141 +176,155 @@ fun HomeScreen(
         if (fromPapers.isNotEmpty()) fromPapers else recentDays(7)
     }
 
-    // miuix 原生：TopAppBar + 上滑收缩（MiuixScrollBehavior，源码同款）
-    val scrollBehavior = MiuixScrollBehavior()
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = "试卷列表",
-                subtitle = userInfo?.realName?.let { "你好，$it" } ?: "",
-                modifier = Modifier.drawBackdrop(
-                    backdrop = topBarBackdrop,
-                    shape = { RectangleShape },
-                    effects = { blur(10f.dp.toPx()) },
-                    onDrawSurface = {
-                        drawRect(glassSurface.copy(alpha = 0.62f))
-                    },
-                ),
-                color = Color.Transparent,
-                scrollBehavior = scrollBehavior,
-            )
-        },
-    ) { padding ->
-        Box(
-            Modifier
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(MiuixTheme.colorScheme.background)
+            .navigationBarsPadding(),
+    ) {
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
                 .fillMaxSize()
-                .layerBackdrop(topBarBackdrop),
+                .statusBarsPadding(),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 8.dp,
+                bottom = 80.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection),
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    end = 16.dp,
-                    top = padding.calculateTopPadding() + 8.dp,
-                    bottom = padding.calculateBottomPadding() + 80.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                item(key = "toolbar") {
-                    RefreshRow(
-                        refreshing = refreshing,
+            // 大标题行（随列表滚动，参考 miuix 原生大标题样式）+ 右侧刷新
+            item(key = "large_title") {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = "试卷列表",
+                            fontSize = MiuixTheme.textStyles.title1.fontSize,
+                            fontWeight = FontWeight.Normal,
+                            color = MiuixTheme.colorScheme.onSurface,
+                        )
+                        val greet = userInfo?.realName?.let { "你好，$it" } ?: ""
+                        if (greet.isNotEmpty()) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = greet,
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = { vm.load(force = true) },
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.Refresh,
+                            contentDescription = "刷新",
+                            tint = MiuixTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+            item(key = "toolbar") {
+                RefreshRow(
+                    dateFilter = dateFilter,
+                    subjectFilter = subjectFilter,
+                )
+            }
+            item(key = "search") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextField(
+                        state = searchState,
+                        label = "搜索试卷 / 课后习题",
+                        useLabelAsPlaceholder = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(2.dp))
+                    FilterRow(
                         dateFilter = dateFilter,
                         subjectFilter = subjectFilter,
-                        onRefresh = { vm.load(force = true) },
+                        dates = dates,
+                        subjects = subjects,
+                        onDateSelect = { vm.setDateFilter(it) },
+                        onSubjectSelect = { vm.setSubjectFilter(it) },
+                        onClear = {
+                            vm.setDateFilter(null)
+                            vm.setSubjectFilter(null)
+                        },
                     )
                 }
-                item(key = "search") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        TextField(
-                            state = searchState,
-                            label = "搜索试卷 / 课后习题",
-                            useLabelAsPlaceholder = true,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Spacer(Modifier.width(2.dp))
-                        FilterRow(
-                            dateFilter = dateFilter,
-                            subjectFilter = subjectFilter,
-                            dates = dates,
-                            subjects = subjects,
-                            onDateSelect = { vm.setDateFilter(it) },
-                            onSubjectSelect = { vm.setSubjectFilter(it) },
-                            onClear = {
-                                vm.setDateFilter(null)
-                                vm.setSubjectFilter(null)
-                            },
-                        )
-                    }
-                }
-                item(key = "quick_title") {
-                    SmallTitle(text = "快捷操作")
-                }
-                item(key = "link") {
-                    LinkQueryEntry(onClick = onOpenLinkQuery)
-                }
-                item(key = "brush_today") {
-                    BrushTodayEntry(
-                        brushing = brushing,
-                        progress = brushProgress,
-                        onClick = { showBrushDialog = true },
-                    )
-                }
+            }
+            item(key = "quick_title") {
+                SmallTitle(text = "快捷操作")
+            }
+            item(key = "link") {
+                LinkQueryEntry(onClick = onOpenLinkQuery)
+            }
+            item(key = "brush_today") {
+                BrushTodayEntry(
+                    brushing = brushing,
+                    progress = brushProgress,
+                    onClick = { showBrushDialog = true },
+                )
+            }
 
-                when (val state = uiState) {
-                    HomeViewModel.UiState.Loading -> {
-                        item(key = "scan_status") {
-                            ScanStatusRow(statusText.ifBlank { "正在扫描作业…" })
+            when (val state = uiState) {
+                HomeViewModel.UiState.Loading -> {
+                    item(key = "scan_status") {
+                        ScanStatusRow(statusText.ifBlank { "正在扫描作业…" })
+                    }
+                }
+                HomeViewModel.UiState.Empty -> {
+                    item(key = "empty") {
+                        EmptyHint("暂未找到可查询的任务\n请确认作业已布置试卷，或使用粘贴链接查询")
+                    }
+                }
+                is HomeViewModel.UiState.Error -> {
+                    item(key = "error") {
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 40.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            Text(
+                                state.message,
+                                fontSize = 14.sp,
+                                color = MiuixTheme.colorScheme.error,
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            TextButton(text = "重试", onClick = { vm.load(force = true) })
                         }
                     }
-                    HomeViewModel.UiState.Empty -> {
-                        item(key = "empty") {
-                            EmptyHint("暂未找到可查询的任务\n请确认作业已布置试卷，或使用粘贴链接查询")
+                }
+                is HomeViewModel.UiState.Ready -> {
+                    if (dateGroups.isEmpty()) {
+                        item(key = "filtered_empty") {
+                            EmptyHint("当前筛选 / 搜索条件下没有任务")
                         }
-                    }
-                    is HomeViewModel.UiState.Error -> {
-                        item(key = "error") {
-                            Column(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 40.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Text(
-                                    state.message,
-                                    fontSize = 14.sp,
-                                    color = MiuixTheme.colorScheme.error,
+                    } else {
+                        dateGroups.forEach { (date, papers) ->
+                            item(key = "date_$date") {
+                                SmallTitle(
+                                    text = if (date == "其他") "未分类" else date,
                                 )
-                                Spacer(Modifier.height(12.dp))
-                                TextButton(text = "重试", onClick = { vm.load(force = true) })
                             }
-                        }
-                    }
-                    is HomeViewModel.UiState.Ready -> {
-                        if (dateGroups.isEmpty()) {
-                            item(key = "filtered_empty") {
-                                EmptyHint("当前筛选 / 搜索条件下没有任务")
-                            }
-                        } else {
-                            dateGroups.forEach { (date, papers) ->
-                                item(key = "date_$date") {
-                                    SmallTitle(
-                                        text = if (date == "其他") "未分类" else date,
-                                    )
-                                }
-                                items(papers, key = { it.paperId }) { paper ->
-                                    PaperRow(
-                                        paper = paper,
-                                        count = paperCounts[paper.paperId],
-                                        onClick = { onOpenPaper(paper) },
-                                    )
-                                }
+                            items(papers, key = { it.paperId }) { paper ->
+                                PaperRow(
+                                    paper = paper,
+                                    count = paperCounts[paper.paperId],
+                                    onClick = { onOpenPaper(paper) },
+                                )
                             }
                         }
                     }
@@ -389,12 +379,11 @@ fun HomeScreen(
     }
 }
 
+/** 筛选状态行（刷新按钮已移至大标题右侧） */
 @Composable
 private fun RefreshRow(
-    refreshing: Boolean,
     dateFilter: String?,
     subjectFilter: String?,
-    onRefresh: () -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -412,13 +401,6 @@ private fun RefreshRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onRefresh, modifier = Modifier.size(34.dp)) {
-            Icon(
-                imageVector = RefreshIcon,
-                contentDescription = "刷新",
-                tint = MiuixTheme.colorScheme.primary,
-            )
-        }
     }
 }
 
