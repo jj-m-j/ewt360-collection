@@ -37,7 +37,10 @@ data class BrushResult(val success: Boolean, val message: String)
 
 /**
  * 视频课刷课引擎（原生实现，协议源自 ewt360-brush / spark_ewt）：
- * 扫描视频课时 → 播放上报（BFE，HMAC-SHA1 签名）→ 竞态爆发加速 → 看课检测置过。
+ * 扫描视频课时 → 播放上报（BFE，HMAC-SHA1 签名）→ 看课检测置过。
+ *
+ * ⚠️ 竞态爆发（12 路并发）已被服务端风控识别（699101 环境异常，Termux 实测 burst=1 单发正常）。
+ * 默认单发上报（burst=1），稳定优先。
  */
 class CourseRepository {
 
@@ -46,16 +49,13 @@ class CourseRepository {
     private suspend fun schoolId(): Long {
         if (cachedSchoolId > 0) return cachedSchoolId
         val resp = EwtEndpoints.getSchoolUserInfo()
-        DebugLog.d("Course", "getSchoolUserInfo 响应: ${resp.toString().take(400)}")
         val school = resp.optObj("data")
         val raw = school?.strOr("schoolId", "")?.takeIf { it.isNotBlank() }
             ?: school?.strOr("id", "")?.takeIf { it.isNotBlank() }
-            ?: school?.strOr("schoolId", "")
             ?: resp.optObj("data")?.optObj("school")?.strOr("schoolId", "")
             ?: ""
         cachedSchoolId = raw.toLongOrNull() ?: 0L
-        if (cachedSchoolId == 0L) throw EwtException("schoolId 解析失败，原始值：'$raw'，data=${school?.toString()?.take(200)}")
-        DebugLog.d("Course", "schoolId=$cachedSchoolId")
+        if (cachedSchoolId == 0L) throw EwtException("schoolId 解析失败，原始值：'$raw'")
         return cachedSchoolId
     }
 
@@ -84,7 +84,6 @@ class CourseRepository {
             }
         }
         all.sortByDescending { if (it.endTime != 0L) it.endTime else it.startTime }
-        DebugLog.d("Course", "作业列表共 ${all.size} 个")
         return all
     }
 
@@ -114,28 +113,22 @@ class CourseRepository {
      * 按日期统计分组拉取（与 spark_ewt list_video_tasks 同源）。
      */
     suspend fun scanVideoLessons(onProgress: (String) -> Unit = {}): List<VideoLesson> {
-        DebugLog.d("Course", "scanVideoLessons 开始")
         val sid = schoolId()
         onProgress("正在获取作业列表…")
         val homeworks = fetchHomeworks(sid)
-        if (homeworks.isEmpty()) {
-            DebugLog.d("Course", "作业列表为空，直接返回")
-            return emptyList()
-        }
+        if (homeworks.isEmpty()) return emptyList()
         val lessons = mutableListOf<VideoLesson>()
         val seen = mutableSetOf<String>()
         homeworks.forEachIndexed { i, hw ->
             onProgress("扫描作业 ${i + 1}/${homeworks.size}：${hw.title}")
             try {
                 val ls = scanHomeworkVideoLessons(sid, hw)
-                DebugLog.d("Course", "作业 ${hw.homeworkId} 视频课时数=${ls.size}")
                 lessons += ls.filter { seen.add(it.lessonId) }
             } catch (e: Exception) {
                 DebugLog.e("Course", "作业扫描失败 hw=${hw.homeworkId}", e)
             }
         }
         onProgress("共找到 ${lessons.size} 个视频课时")
-        DebugLog.d("Course", "共找到 ${lessons.size} 个视频课时")
         return lessons
     }
 
@@ -151,7 +144,6 @@ class CourseRepository {
                 ?: statData?.optArr("list") ?: emptyList())
                 .mapNotNull { it as? JsonObject }
                 .filter { !it.str("dateId").isNullOrBlank() }
-            DebugLog.d("Course", "作业 $hid 日期分组数=${dateStat.size}")
         } catch (e: Exception) {
             DebugLog.e("Course", "日期统计失败 hw=$hid", e)
         }
@@ -163,7 +155,6 @@ class CourseRepository {
                 try {
                     pageTasks(schoolId.toString(), hid, dayId, null)
                 } catch (e: Exception) {
-                    DebugLog.e("Course", "任务拉取失败 day=$dayId", e)
                     emptyList()
                 }
             }.flatten()
@@ -176,12 +167,6 @@ class CourseRepository {
                 }
             }.flatten()
         }
-
-        // 日志：本作业任务 contentType 分布（排查扫描不到用）
-        val dist = tasks.groupBy { it.intOr("contentType", -1) }
-            .map { (k, v) -> "$k=${v.size}" }
-            .joinToString(", ")
-        DebugLog.d("Course", "作业 $hid 任务数=${tasks.size} contentType分布[$dist]")
 
         val seen = mutableSetOf<String>()
         for (t in tasks) {
@@ -212,53 +197,40 @@ class CourseRepository {
 
     // ── 刷课核心 ──────────────────────────────────────────────
 
-    /** 竞态爆发：N 路并发同时打 BFE（服务端 check-and-deduct 非原子 → 多数滑过限流） */
-    private suspend fun burstFire(
+    /**
+     * 单发播放上报（burst=1，与 Termux 实测一致，避免 699101 风控）。
+     * 保持 spark_ewt 协议原样：action=2 + stay_time=10s + speed=2。
+     */
+    private suspend fun singleFire(
         conf: GlobalConf,
         token: String,
         lesson: VideoLesson,
         schoolId: Long,
         bizCode: String,
         videoType: Int,
-        nThreads: Int = 12,
-    ): Pair<Int, Int> {
-        val gate = CompletableDeferred<Unit>()
-        val results = java.util.concurrent.ConcurrentLinkedQueue<ReportResult>()
-        coroutineScope {
-            val jobs = (0 until nThreads).map { i ->
-                async(Dispatchers.IO) {
-                    gate.await()
-                    val uuid = "${java.util.UUID.randomUUID().toString().substring(0, 8)}_$i"
-                    val r = runCatching {
-                        CourseApi.reportBatch(
-                            conf = conf,
-                            token = token,
-                            lessonId = lesson.lessonId,
-                            courseId = lesson.courseId,
-                            schoolId = schoolId,
-                            bizCode = bizCode,
-                            videoType = videoType,
-                            action = 2,
-                            stayTimeMs = 10_000,
-                            pointId = 200 + i,
-                            pointNum = 20,
-                            beginOffsetMs = 60_000,
-                            uuid = uuid,
-                        )
-                    }.getOrDefault(ReportResult.FAIL)
-                    results.add(r)
-                }
-            }
-            delay(30) // 就绪窗口后同时放行
-            gate.complete(Unit)
-            jobs.forEach { it.join() }
-        }
-        val ok = results.count { it == ReportResult.OK }
-        val waf = results.count { it == ReportResult.WAF }
-        return ok to waf
+    ): Boolean {
+        val uuid = "${java.util.UUID.randomUUID().toString().substring(0, 8)}_1"
+        val r = runCatching {
+            CourseApi.reportBatch(
+                conf = conf,
+                token = token,
+                lessonId = lesson.lessonId,
+                courseId = lesson.courseId,
+                schoolId = schoolId,
+                bizCode = bizCode,
+                videoType = videoType,
+                action = 2,
+                stayTimeMs = 10_000,
+                pointId = 200,
+                pointNum = 20,
+                beginOffsetMs = 60_000,
+                uuid = uuid,
+            )
+        }.getOrDefault(ReportResult.FAIL)
+        return r == ReportResult.OK
     }
 
-    /** 单课时刷课（action=1 启动 → 竞态爆发循环 → 看课检测置过 → 确认） */
+    /** 单课时刷课（action=1 启动 → 单发上报循环 → 看课检测置过 → 确认） */
     suspend fun brushLesson(
         lesson: VideoLesson,
         onProgress: (String) -> Unit = {},
@@ -287,6 +259,7 @@ class CourseRepository {
         if (needed <= 0L) {
             return BrushResult(true, "进度已达标")
         }
+        DebugLog.d("Course", "开始刷课 lesson=${lesson.lessonId} lessonTime=${lessonTime}ms finish=$finishPlayTime play=$playTime needed=$needed")
 
         // Step 2: 会话凭证
         var conf = try {
@@ -308,7 +281,7 @@ class CourseRepository {
         }
         onProgress("已启动")
 
-        // Step 4: 竞态爆发循环（stay_time=10s，间隔约 10s ±20% 抖动）
+        // Step 4: 单发上报循环（间隔 10s ±20% 抖动，与 spark_ewt BURST_WAIT 一致）
         var stall = 0
         var round = 0
         var pct = 0.0
@@ -320,11 +293,9 @@ class CourseRepository {
             // 刷新会话（secret 可能过期）
             conf = runCatching { CourseApi.fetchGlobalConf(bizCode) }.getOrDefault(conf)
 
-            val (ok, waf) = burstFire(conf, token, lesson, sid, bizCode, videoType)
-            if (waf > 0) {
-                onProgress("风控拦截，冷却中…")
-                delay(120_000)
-                continue
+            val ok = singleFire(conf, token, lesson, sid, bizCode, videoType)
+            if (!ok) {
+                onProgress("第 $round 轮：上报未成功，重试…")
             }
 
             // 查询进度
@@ -337,7 +308,7 @@ class CourseRepository {
                 playTime = newPlay
                 needed = (finishPlayTime - playTime).coerceAtLeast(0L)
                 pct = info2.doubleOr("percent", pct)
-                onProgress("第 $round 轮：${(pct * 100).toInt()}%（成功 $ok/${"12"}）")
+                onProgress("第 $round 轮：${(pct * 100).toInt()}%")
                 if (delta > 0L) {
                     stall = 0
                     continue
@@ -352,7 +323,7 @@ class CourseRepository {
                 CourseApi.addVideoss(sid, lesson.homeworkId, lesson.lessonId, 2)
             }
             delay(2_000)
-            burstFire(conf, token, lesson, sid, bizCode, videoType)
+            singleFire(conf, token, lesson, sid, bizCode, videoType)
             val info3 = runCatching {
                 CourseApi.getLessonInfo(sid, lesson.homeworkId, lesson.lessonId, lesson.contentType)
             }.getOrNull()
