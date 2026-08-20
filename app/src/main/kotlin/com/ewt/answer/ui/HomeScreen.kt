@@ -42,7 +42,6 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
-import kotlin.random.Random
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import top.yukonga.miuix.kmp.basic.Button
@@ -51,7 +50,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
@@ -120,14 +118,12 @@ fun HomeScreen(
 
     LaunchedEffect(Unit) { vm.load() }
 
-    val scrollBehavior = MiuixScrollBehavior()
-
     Scaffold(
         topBar = {
             TopAppBar(
                 title = "试卷列表",
                 subtitle = userInfo?.realName?.let { "你好，$it" } ?: "",
-                // 与列表内容 16dp 左对齐（默认 TitlePadding 26dp 会偏右 10dp）
+                // 顶栏固定：不接滚动折叠，副标题（你好，xx）常显；与列表 16dp 左对齐
                 titlePadding = 16.dp,
                 // 液态玻璃顶栏：模糊内容层（Android 12+），低版本降级为半透明底色
                 modifier = Modifier.drawBackdrop(
@@ -139,11 +135,10 @@ fun HomeScreen(
                     },
                 ),
                 color = Color.Transparent,
-                scrollBehavior = scrollBehavior,
             )
         },
     ) { padding ->
-        // 内容区（不含顶栏）作为顶栏模糊的捕获源
+        // 内容区（不含顶栏）作为顶栏模糊的捕获源；刷新指示器显示在列表顶部（粘贴链接上方）
         Box(
             Modifier
                 .fillMaxSize()
@@ -152,7 +147,6 @@ fun HomeScreen(
             PullToRefresh(
                 isRefreshing = refreshing,
                 onRefresh = { vm.load(force = true) },
-                topAppBarScrollBehavior = scrollBehavior,
             ) {
                 // ── 筛选计算（Composable 上下文，勿移入 LazyColumn） ──
                 val readyGroups = (uiState as? HomeViewModel.UiState.Ready)?.groups
