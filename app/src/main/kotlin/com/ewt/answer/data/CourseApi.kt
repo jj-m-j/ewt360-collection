@@ -32,14 +32,11 @@ data class GlobalConf(
  * 视频课（刷课）API：播放上报协议。
  * 源自 ewt360-brush（spark_ewt）逆向：BFE 播放上报 + HMAC-SHA1 签名（复刻 MSTPlayer makeSecretKey）。
  *
- * ⚠️ 699101「环境异常」最终修复（2026-08-20，termux 抓包 + 官方 app HookNext 抓包确认）：
- *  ① 协议改用 app 端 2013：monitor/app/collect/batch + videoBizCode=2013（官方 app 同款）
- *  ② body 身份完全 Android 化：os=Android、去掉 browser/browser_ver、sn=ewt_app_video_detail、
- *     UA=okhttp/4.12.0（Conscrypt 暴露 Android 设备，web 身份/脚本 UA = 身份矛盾 → 699101；
- *     官方 app Conscrypt + Android 身份 + okhttp UA 一致、termux OpenSSL + web 身份自洽）
- *  ③ URL query 完全对齐官方 app：TrLessonId + x-bfe-session-id(in URL) + TrVideoBizCode + TrUuId(纯8位hex)
- *     + TrFallback + TrUserId（去掉 sdkVersion/_ 参数）
- *  ④ 传输层：HTTP/1.1、Accept 头、Content-Type 纯 application/json
+ * ⚠️ 699101/699102 修复历程（2026-08-20，termux 抓包 + 官方 app HookNext 抓包确认）：
+ *  ① 699101（环境异常）= web 协议(1013) + Android Conscrypt 组合 → 改 2013 app 协议解决
+ *  ② 699102（设备信息异常）= body 设备信息与真实设备不符 → 改用真实屏幕分辨率（EwtApplication 初始化）
+ *  ③ 其他对齐：sn=ewt_app_video_detail、UA=okhttp/4.12.0、os=Android、HTTP/1.1、Accept 头、
+ *     Content-Type 纯 application/json、URL query 官方化（TrUuId 纯8位、x-bfe-session-id 进 URL）
  */
 object CourseApi {
     const val BFE = "https://bfe.ewt360.com"
@@ -47,8 +44,12 @@ object CourseApi {
     const val VIDEO_BIZ = "2013"
     const val SCHOOL_VIDEO_BIZ = "1014"
     const val SDK_VERSION = "3.0.37"
-    // app 端 sn（web 版是 ewt_web_video_detail，与 2013 协议不匹配）
+    // app 端 sn（web 版是 ewt_web_video_detail，与 2013 协议不匹配 → 699101）
     const val SN = "ewt_app_video_detail"
+
+    /** 真实设备分辨率（宽*高），EwtApplication.onCreate 用 displayMetrics 初始化（699102 修复） */
+    @Volatile
+    var deviceResolution: String = "1920*1080"
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -189,7 +190,7 @@ object CourseApi {
     /**
      * 单条播放上报。返回 OK / FAIL / WAF。
      * action: 1=play start, 2=进度上报(竞态爆发), 3=完成
-     * 走 app 端协议（2013，官方 app 同款），body 身份完全 Android 化。
+     * 走 app 端协议（2013，官方 app 同款），body 身份完全 Android 化（真实分辨率）。
      */
     suspend fun reportBatch(
         conf: GlobalConf,
@@ -246,7 +247,7 @@ object CourseApi {
                     put("userid", userId)
                     put("ip", conf.clientIp)
                     put("os", "Android")
-                    put("resolution", "1920*1080")
+                    put("resolution", deviceResolution)
                     put("mstid", token)
                     put("playerType", 1)
                     put("sdkVersion", SDK_VERSION)

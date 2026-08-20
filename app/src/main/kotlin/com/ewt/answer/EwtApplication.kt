@@ -6,6 +6,7 @@ import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import com.ewt.answer.data.AppContainer
+import com.ewt.answer.data.CourseApi
 import com.ewt.answer.data.DebugLog
 import okhttp3.OkHttpClient
 
@@ -15,6 +16,9 @@ class EwtApplication : Application(), SingletonImageLoader.Factory {
         super.onCreate()
         DebugLog.init(this)
         AppContainer.init(this)
+        // BFE 上报需要真实设备分辨率（699102 设备信息异常：Android 设备 + web 横向分辨率 = 矛盾）
+        val dm = resources.displayMetrics
+        CourseApi.deviceResolution = "${dm.widthPixels}*${dm.heightPixels}"
     }
 
     /** 图片请求专用 OkHttp：统一补 UA / Referer / Origin（EWT 图床无 Referer 会 403） */
