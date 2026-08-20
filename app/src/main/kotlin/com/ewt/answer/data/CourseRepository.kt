@@ -40,9 +40,15 @@ data class BrushResult(val success: Boolean, val message: String)
  * 扫描视频课时 → 播放上报（BFE，HMAC-SHA1 签名）→ 看课检测置过。
  *
  * ⚠️ 竞态爆发（12 路并发）已被服务端风控识别（699101 环境异常，Termux 实测 burst=1 单发正常）。
- * 默认单发上报（burst=1），稳定优先。
+ * 并发路数由设置页控制（CourseRepository.burstSize，默认 1 路最稳）。
  */
 class CourseRepository {
+
+    companion object {
+        /** 刷课并发路数（设置页可调，1=单发最稳） */
+        @Volatile
+        var burstSize: Int = 1
+    }
 
     private var cachedSchoolId: Long = 0L
 
@@ -197,11 +203,8 @@ class CourseRepository {
 
     // ── 刷课核心 ──────────────────────────────────────────────
 
-    /**
-     * 单发播放上报（burst=1，与 Termux 实测一致，避免 699101 风控）。
-     * 保持 spark_ewt 协议原样：action=2 + stay_time=10s + speed=2。
-     */
-    private suspend fun singleFire(
+    /** 按 burstSize 发起一轮上报（1=单发最稳，>1=小并发加速，可被风控） */
+    private suspend fun fire(
         conf: GlobalConf,
         token: String,
         lesson: VideoLesson,
@@ -209,28 +212,48 @@ class CourseRepository {
         bizCode: String,
         videoType: Int,
     ): Boolean {
-        val uuid = "${java.util.UUID.randomUUID().toString().substring(0, 8)}_1"
-        val r = runCatching {
-            CourseApi.reportBatch(
-                conf = conf,
-                token = token,
-                lessonId = lesson.lessonId,
-                courseId = lesson.courseId,
-                schoolId = schoolId,
-                bizCode = bizCode,
-                videoType = videoType,
-                action = 2,
-                stayTimeMs = 10_000,
-                pointId = 200,
-                pointNum = 20,
-                beginOffsetMs = 60_000,
-                uuid = uuid,
-            )
-        }.getOrDefault(ReportResult.FAIL)
-        return r == ReportResult.OK
+        val n = CourseRepository.burstSize.coerceIn(1, 8)
+        if (n <= 1) {
+            val uuid = "${java.util.UUID.randomUUID().toString().substring(0, 8)}_1"
+            val r = runCatching {
+                CourseApi.reportBatch(
+                    conf = conf, token = token, lessonId = lesson.lessonId,
+                    courseId = lesson.courseId, schoolId = schoolId,
+                    bizCode = bizCode, videoType = videoType,
+                    action = 2, stayTimeMs = 10_000,
+                    pointId = 200, pointNum = 20, beginOffsetMs = 60_000, uuid = uuid,
+                )
+            }.getOrDefault(ReportResult.FAIL)
+            return r == ReportResult.OK
+        }
+        // 小并发：栅栏同步放行（可配置加速）
+        val gate = CompletableDeferred<Unit>()
+        val results = java.util.concurrent.ConcurrentLinkedQueue<ReportResult>()
+        coroutineScope {
+            val jobs = (0 until n).map { i ->
+                async(Dispatchers.IO) {
+                    gate.await()
+                    val uuid = "${java.util.UUID.randomUUID().toString().substring(0, 8)}_$i"
+                    val r = runCatching {
+                        CourseApi.reportBatch(
+                            conf = conf, token = token, lessonId = lesson.lessonId,
+                            courseId = lesson.courseId, schoolId = schoolId,
+                            bizCode = bizCode, videoType = videoType,
+                            action = 2, stayTimeMs = 10_000,
+                            pointId = 200 + i, pointNum = 20, beginOffsetMs = 60_000, uuid = uuid,
+                        )
+                    }.getOrDefault(ReportResult.FAIL)
+                    results.add(r)
+                }
+            }
+            delay(30)
+            gate.complete(Unit)
+            jobs.forEach { it.join() }
+        }
+        return results.any { it == ReportResult.OK }
     }
 
-    /** 单课时刷课（action=1 启动 → 单发上报循环 → 看课检测置过 → 确认） */
+    /** 单课时刷课（action=1 启动 → 上报循环 → 看课检测置过 → 确认） */
     suspend fun brushLesson(
         lesson: VideoLesson,
         onProgress: (String) -> Unit = {},
@@ -259,7 +282,7 @@ class CourseRepository {
         if (needed <= 0L) {
             return BrushResult(true, "进度已达标")
         }
-        DebugLog.d("Course", "开始刷课 lesson=${lesson.lessonId} lessonTime=${lessonTime}ms finish=$finishPlayTime play=$playTime needed=$needed")
+        DebugLog.d("Course", "开始刷课 lesson=${lesson.lessonId} lessonTime=${lessonTime}ms finish=$finishPlayTime play=$playTime needed=$needed burst=${CourseRepository.burstSize}")
 
         // Step 2: 会话凭证
         var conf = try {
@@ -281,7 +304,7 @@ class CourseRepository {
         }
         onProgress("已启动")
 
-        // Step 4: 单发上报循环（间隔 10s ±20% 抖动，与 spark_ewt BURST_WAIT 一致）
+        // Step 4: 上报循环（间隔 10s ±20% 抖动，与 spark_ewt BURST_WAIT 一致）
         var stall = 0
         var round = 0
         var pct = 0.0
@@ -293,7 +316,7 @@ class CourseRepository {
             // 刷新会话（secret 可能过期）
             conf = runCatching { CourseApi.fetchGlobalConf(bizCode) }.getOrDefault(conf)
 
-            val ok = singleFire(conf, token, lesson, sid, bizCode, videoType)
+            val ok = fire(conf, token, lesson, sid, bizCode, videoType)
             if (!ok) {
                 onProgress("第 $round 轮：上报未成功，重试…")
             }
@@ -323,7 +346,7 @@ class CourseRepository {
                 CourseApi.addVideoss(sid, lesson.homeworkId, lesson.lessonId, 2)
             }
             delay(2_000)
-            singleFire(conf, token, lesson, sid, bizCode, videoType)
+            fire(conf, token, lesson, sid, bizCode, videoType)
             val info3 = runCatching {
                 CourseApi.getLessonInfo(sid, lesson.homeworkId, lesson.lessonId, lesson.contentType)
             }.getOrNull()
