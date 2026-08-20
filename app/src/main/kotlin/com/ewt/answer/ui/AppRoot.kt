@@ -78,8 +78,6 @@ sealed class Screen {
     data object About : Screen()
     /** 课程设置页（课程页顶栏齿轮进入） */
     data object CourseSettings : Screen()
-    /** 网页刷课页（WebView 真实浏览器环境，无 699101/699102 风控） */
-    data object WebViewBrush : Screen()
     data class Questions(val paper: Paper) : Screen()
 }
 
@@ -328,8 +326,7 @@ fun AppRoot() {
                                 targetState is Screen.LinkQuery ||
                                 targetState is Screen.Debug ||
                                 targetState is Screen.About ||
-                                targetState is Screen.CourseSettings ||
-                                targetState is Screen.WebViewBrush -> {
+                                targetState is Screen.CourseSettings -> {
                                 (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
                                     .togetherWith(fadeOut(tween(200)))
                             }
@@ -436,7 +433,6 @@ private fun RenderScreen(
             onOpenDebug = { navigateTo(Screen.Debug) },
             onOpenAbout = { navigateTo(Screen.About) },
             onOpenCourseSettings = { navigateTo(Screen.CourseSettings) },
-            onOpenWebViewBrush = { navigateTo(Screen.WebViewBrush) },
             onLogout = {
                 repo.clearToken()
                 navigateTo(Screen.Login)
@@ -453,9 +449,6 @@ private fun RenderScreen(
             onBack = onBack,
         )
         Screen.CourseSettings -> CourseSettingsScreen(
-            onBack = onBack,
-        )
-        Screen.WebViewBrush -> WebViewBrushScreen(
             onBack = onBack,
         )
         is Screen.Questions -> QuestionsScreen(
@@ -481,7 +474,6 @@ private fun MainLayer(
     onOpenDebug: () -> Unit,
     onOpenAbout: () -> Unit,
     onOpenCourseSettings: () -> Unit,
-    onOpenWebViewBrush: () -> Unit,
     onLogout: () -> Unit,
 ) {
     // 玻璃底栏的反射源：捕获整个 Tab 内容（列表滚动画面；顶栏 blur 在页面内部用独立 backdrop，避免成环）
@@ -509,7 +501,6 @@ private fun MainLayer(
             when (t) {
                 TAB_COURSE -> CourseScreen(
                     onOpenSettings = onOpenCourseSettings,
-                    onOpenWebViewBrush = onOpenWebViewBrush,
                 )
                 TAB_PAPERS -> HomeScreen(
                     userInfo = userInfo,

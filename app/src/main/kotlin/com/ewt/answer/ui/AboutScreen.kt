@@ -28,7 +28,6 @@ import androidx.compose.ui.unit.sp
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
@@ -38,7 +37,7 @@ import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 设置页（底部 Tab）：与试卷/课程页统一（随列表滚动的大标题，非固定、无模糊）。
+ * 设置页（底部 Tab）：大标题 miuix 原生排版（左右 26dp 边距 + 下方留白）。
  */
 @Composable
 fun AboutScreen(
@@ -70,12 +69,12 @@ fun AboutScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // 大标题行（随列表滚动，参考 miuix 原生大标题样式）
+            // 大标题行（miuix 原生排版：左右 26dp 边距、下方留白）
             item(key = "large_title") {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 4.dp, bottom = 6.dp),
+                        .padding(start = 10.dp, end = 0.dp, top = 4.dp, bottom = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Column(Modifier.weight(1f)) {
