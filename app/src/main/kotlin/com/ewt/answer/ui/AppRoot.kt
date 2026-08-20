@@ -6,11 +6,13 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -67,7 +69,7 @@ import top.yukonga.miuix.kmp.window.WindowDialog
 sealed class Screen {
     data object Boot : Screen()
     data object Login : Screen()
-    /** 主层（底部 Tab：0=试卷 1=设置） */
+    /** 主层（底部 Tab：0=课程 1=试卷 2=设置） */
     data object Main : Screen()
     data object LinkQuery : Screen()
     data object Debug : Screen()
@@ -76,9 +78,10 @@ sealed class Screen {
     data class Questions(val paper: Paper) : Screen()
 }
 
-/** 底部 Tab 索引 */
-private const val TAB_PAPERS = 0
-private const val TAB_SETTINGS = 1
+/** 底部 Tab 索引：课程 / 试卷 / 设置 */
+private const val TAB_COURSE = 0
+private const val TAB_PAPERS = 1
+private const val TAB_SETTINGS = 2
 
 /** 弹窗底部操作栏：取消(次要) + 确认(小米蓝) 右对齐 —— 全应用统一 */
 @Composable
@@ -150,8 +153,8 @@ fun AppRoot() {
         var screen by remember { mutableStateOf<Screen>(Screen.Boot) }
         var previous by remember { mutableStateOf<Screen?>(null) }
         var userInfo by remember { mutableStateOf<UserInfo?>(null) }
-        // 主层底部 Tab（试卷 / 设置）
-        var tab by remember { mutableIntStateOf(TAB_PAPERS) }
+        // 主层底部 Tab（课程 / 试卷 / 设置）
+        var tab by remember { mutableIntStateOf(TAB_COURSE) }
         // paperId → 真实题数（打开试卷后回传，主页展示）
         var paperCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
         // 主页列表滚动位置（跨页面保留，返回不跳顶）
@@ -174,8 +177,7 @@ fun AppRoot() {
 
         /**
          * 返回（预测式/系统键）：
-         * 补到完全划出（p=1）后，顶层继续向右滑出并淡出，上一页从左侧原位接管
-         * （不再顶层滑回盖回，杜绝“从右边过来”与过冲/瞬移感）。
+         * 松手后从当前手势进度丝滑补到完全划出（不瞬移），然后切到上一页继续滑出淡出。
          */
         fun goBack() {
             val prev = previous
@@ -186,8 +188,11 @@ fun AppRoot() {
             if (gestureCommitted) return // 动画进行中，防重入
             gestureCommitted = true
             scope.launch {
-                // 内容切换前先补到完全划出：切换发生在屏幕外，不产生瞬移
-                backProgress.snapTo(1f)
+                // 从当前进度动画到完全划出（顶层内容尚未切换，视觉连续，无瞬移）
+                backProgress.animateTo(
+                    1f,
+                    tween(durationMillis = 200, easing = LinearEasing),
+                )
                 screen = prev
                 showPrevLayer = true
                 backProgress.animateTo(
@@ -471,11 +476,17 @@ private fun MainLayer(
                 .fillMaxSize()
                 .layerBackdrop(backdrop),
             transitionSpec = {
-                fadeIn(tween(180)).togetherWith(fadeOut(tween(120)))
+                // Tab 切换：按方向滑动 + 淡入淡出（FastOutSlowIn 曲线，MIUIX 动效）
+                val direction = if (targetState > initialState) 1 else -1
+                (fadeIn(tween(200)) + slideInHorizontally(tween(240, easing = FastOutSlowInEasing)) { direction * it / 4 })
+                    .togetherWith(
+                        fadeOut(tween(150)) + slideOutHorizontally(tween(200, easing = FastOutSlowInEasing)) { -direction * it / 4 },
+                    )
             },
             label = "tab",
         ) { t ->
             when (t) {
+                TAB_COURSE -> CourseScreen()
                 TAB_PAPERS -> HomeScreen(
                     userInfo = userInfo,
                     paperCounts = paperCounts,
@@ -496,8 +507,9 @@ private fun MainLayer(
         // 液态玻璃悬浮底栏：内容包裹窄胶囊，居中悬浮（在内容层之外采样，无递归）
         LiquidGlassBottomBar(
             tabs = listOf(
+                LiquidGlassTab(icon = CourseTabIcon, label = "课程"),
                 LiquidGlassTab(icon = PaperTabIcon, label = "试卷"),
-                LiquidGlassTab(icon = AboutTabIcon, label = "设置"),
+                LiquidGlassTab(icon = SettingsTabIcon, label = "设置"),
             ),
             selectedTabIndex = selectedTabIndex,
             onTabSelected = onTabSelect,

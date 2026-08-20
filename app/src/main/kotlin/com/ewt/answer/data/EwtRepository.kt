@@ -430,8 +430,9 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
     // ── 提交（用户确认后调用；EWT-TOOL-main paperFiller / opt.js 流程） ──
 
     /**
-     * 提交整卷答案并交卷自批：客观题提交标准答案（系统阅卷），主观题 revision=true 满分自批；
+     * 提交整卷答案并交卷自批：客观题提交标准答案（系统阅卷，revision=false），主观题 revision=true 满分自批；
      * 交卷自批后尽力查询本次得分并附加到结果文案。
+     * 参考 opt.js：选择题 answers=字母列表 + revision=false；非选择题 answers=[1] + revision=true + score。
      */
     suspend fun submitPaperAnswers(
         paper: Paper,
@@ -457,6 +458,8 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                         put("totalSeconds", 50)
                         put("cateId", q.cateId)
                         put("answers", JsonArray(opts.map { JsonPrimitive(it) }))
+                        // 关键：客观题必须显式 revision=false，否则服务端按自批处理导致"未提交/要自批"
+                        put("revision", false)
                     },
                 )
             } else {
