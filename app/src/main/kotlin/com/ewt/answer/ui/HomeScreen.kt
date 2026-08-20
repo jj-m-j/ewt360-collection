@@ -42,6 +42,7 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import kotlin.random.Random
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import top.yukonga.miuix.kmp.basic.Button
@@ -346,70 +347,7 @@ fun HomeScreen(
         }
     }
 
-    // 刷今日确认对话框（预留，功能上线后启用）
-    if (brushConfirm) {
-        WindowDialog(
-            show = true,
-            title = "一键刷今日试卷",
-            summary = "自动获取答案并提交交卷",
-            onDismissRequest = { brushConfirm = false },
-        ) {
-            Column {
-                Text(
-                    text = "将对今天的所有试卷自动执行：打开 → 获取全部答案 → 提交交卷自批。客观题系统阅卷必对；主观题按 对100%/半对50%/错0% 分配，使整卷正确率落在区间内。",
-                    fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
-                )
-                Spacer(Modifier.height(12.dp))
-                TextField(
-                    state = brushRateState,
-                    label = "目标正确率区间（如 80-90）",
-                    useLabelAsPlaceholder = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "自定义区间，每张卷子实际正确率在区间内随机取值",
-                    fontSize = 11.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-                Spacer(Modifier.height(14.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextButton(text = "取消", onClick = { brushConfirm = false })
-                    Spacer(Modifier.width(10.dp))
-                    Button(
-                        onClick = {
-                            val range = parseRateRange(brushRateState.text.toString())
-                            if (range == null) return@Button
-                            brushConfirm = false
-                            brushResult = null
-                            brushProgress = "准备中…"
-                            val rate = Random.nextInt(range.first, range.last + 1)
-                            vm.brushToday(
-                                targetRate = rate,
-                                onProgress = { brushProgress = it },
-                                onDone = {
-                                    brushProgress = null
-                                    brushResult = it
-                                },
-                            )
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            color = MiuixTheme.colorScheme.primary,
-                            contentColor = MiuixTheme.colorScheme.onPrimary,
-                        ),
-                    ) {
-                        Text("开始刷卷", fontSize = 14.sp)
-                    }
-                }
-            }
-        }
-    }
-    // 刷卷进度对话框
+    // 刷卷进度对话框（预留）
     if (brushProgress != null && brushResult == null) {
         WindowDialog(
             show = true,
@@ -425,7 +363,7 @@ fun HomeScreen(
             }
         }
     }
-    // 刷卷结果对话框
+    // 刷卷结果对话框（预留）
     if (brushResult != null) {
         WindowDialog(
             show = true,
