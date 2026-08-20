@@ -70,23 +70,18 @@ import top.yukonga.miuix.kmp.window.WindowDialog
 sealed class Screen {
     data object Boot : Screen()
     data object Login : Screen()
-    /** 主层（底部 Tab：0=课程 1=试卷 2=设置） */
+    /** 主层（底部 Tab：0=试卷 1=设置） */
     data object Main : Screen()
     data object LinkQuery : Screen()
     data object Debug : Screen()
     /** 关于（占位页，从设置页进入） */
     data object About : Screen()
-    /** 课程设置页（课程页顶栏齿轮进入） */
-    data object CourseSettings : Screen()
-    /** 网页刷课页（WebView 真实浏览器环境） */
-    data object WebViewBrush : Screen()
     data class Questions(val paper: Paper) : Screen()
 }
 
-/** 底部 Tab 索引：课程 / 试卷 / 设置 */
-private const val TAB_COURSE = 0
-private const val TAB_PAPERS = 1
-private const val TAB_SETTINGS = 2
+/** 底部 Tab 索引：试卷 / 设置 */
+private const val TAB_PAPERS = 0
+private const val TAB_SETTINGS = 1
 
 /** 弹窗底部操作栏：取消(次要) + 确认(小米蓝) 右对齐 —— 全应用统一 */
 @Composable
@@ -158,8 +153,8 @@ fun AppRoot() {
         var screen by remember { mutableStateOf<Screen>(Screen.Boot) }
         var previous by remember { mutableStateOf<Screen?>(null) }
         var userInfo by remember { mutableStateOf<UserInfo?>(null) }
-        // 主层底部 Tab（课程 / 试卷 / 设置）
-        var tab by remember { mutableIntStateOf(TAB_COURSE) }
+        // 主层底部 Tab（试卷 / 设置）
+        var tab by remember { mutableIntStateOf(TAB_PAPERS) }
         // paperId → 真实题数（打开试卷后回传，主页展示）
         var paperCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
         // 主页列表滚动位置（跨页面保留，返回不跳顶）
@@ -327,9 +322,7 @@ fun AppRoot() {
                             targetState is Screen.Questions ||
                                 targetState is Screen.LinkQuery ||
                                 targetState is Screen.Debug ||
-                                targetState is Screen.About ||
-                                targetState is Screen.CourseSettings ||
-                                targetState is Screen.WebViewBrush -> {
+                                targetState is Screen.About -> {
                                 (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
                                     .togetherWith(fadeOut(tween(200)))
                             }
@@ -435,8 +428,6 @@ private fun RenderScreen(
             onOpenLinkQuery = { navigateTo(Screen.LinkQuery) },
             onOpenDebug = { navigateTo(Screen.Debug) },
             onOpenAbout = { navigateTo(Screen.About) },
-            onOpenCourseSettings = { navigateTo(Screen.CourseSettings) },
-            onOpenWebViewBrush = { navigateTo(Screen.WebViewBrush) },
             onLogout = {
                 repo.clearToken()
                 navigateTo(Screen.Login)
@@ -450,12 +441,6 @@ private fun RenderScreen(
             onBack = onBack,
         )
         Screen.About -> AboutPlaceholderScreen(
-            onBack = onBack,
-        )
-        Screen.CourseSettings -> CourseSettingsScreen(
-            onBack = onBack,
-        )
-        Screen.WebViewBrush -> WebViewBrushScreen(
             onBack = onBack,
         )
         is Screen.Questions -> QuestionsScreen(
@@ -480,8 +465,6 @@ private fun MainLayer(
     onOpenLinkQuery: () -> Unit,
     onOpenDebug: () -> Unit,
     onOpenAbout: () -> Unit,
-    onOpenCourseSettings: () -> Unit,
-    onOpenWebViewBrush: () -> Unit,
     onLogout: () -> Unit,
 ) {
     // 玻璃底栏的反射源：捕获整个 Tab 内容（列表滚动画面；顶栏 blur 在页面内部用独立 backdrop，避免成环）
@@ -507,10 +490,6 @@ private fun MainLayer(
             label = "tab",
         ) { t ->
             when (t) {
-                TAB_COURSE -> CourseScreen(
-                    onOpenSettings = onOpenCourseSettings,
-                    onOpenWebViewBrush = onOpenWebViewBrush,
-                )
                 TAB_PAPERS -> HomeScreen(
                     userInfo = userInfo,
                     paperCounts = paperCounts,
@@ -531,7 +510,6 @@ private fun MainLayer(
         // 液态玻璃悬浮底栏：内容包裹窄胶囊，居中悬浮（在内容层之外采样，无递归）
         LiquidGlassBottomBar(
             tabs = listOf(
-                LiquidGlassTab(icon = CourseTabIcon, label = "课程"),
                 LiquidGlassTab(icon = PaperTabIcon, label = "试卷"),
                 LiquidGlassTab(icon = SettingsTabIcon, label = "设置"),
             ),
