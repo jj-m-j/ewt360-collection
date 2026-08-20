@@ -10,21 +10,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -32,12 +32,13 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 设置页（底部 Tab）：字体设置 + 关于入口 + 调试模式 + 退出登录（内容区始终可滚动） */
+/**
+ * 设置页（底部 Tab）：与试卷/课程页统一使用共享液态玻璃滚动收缩顶栏。
+ */
 @Composable
 fun AboutScreen(
     fontEnabled: Boolean,
@@ -47,26 +48,24 @@ fun AboutScreen(
     onOpenAbout: () -> Unit,
     onLogout: () -> Unit,
 ) {
-    // 顶栏独立 backdrop：只捕获内容区（不含顶栏自身），避免 RenderNode 循环引用崩溃
+    // 顶栏独立 backdrop：只捕获内容区，避免 RenderNode 循环引用崩溃
     val topBarBackdrop = rememberLayerBackdrop()
     val glassSurface = MiuixTheme.colorScheme.surface
+    val listState = rememberLazyListState()
+
+    // 滚动收缩进度（共享组件统一计算）
+    val collapseDistance = with(LocalDensity.current) { 64.dp.toPx() }
+    val collapseProgress by rememberCollapseProgress(listState, collapseDistance)
 
     Scaffold(
         topBar = {
-            TopAppBar(
+            // 共享液态玻璃滚动收缩顶栏（与试卷/课程页同一套设计逻辑）
+            CollapsingHeaderBar(
                 title = "设置",
-                // 与内容 16dp 左对齐
-                titlePadding = 16.dp,
-                // 液态玻璃顶栏：模糊内容层（Android 12+），低版本降级为半透明底色
-                modifier = Modifier.drawBackdrop(
-                    backdrop = topBarBackdrop,
-                    shape = { RectangleShape },
-                    effects = { blur(10f.dp.toPx()) },
-                    onDrawSurface = {
-                        drawRect(glassSurface.copy(alpha = 0.62f))
-                    },
-                ),
-                color = Color.Transparent,
+                subtitle = null,
+                progress = collapseProgress,
+                backdrop = topBarBackdrop,
+                glassSurface = glassSurface,
             )
         },
     ) { padding ->
@@ -75,91 +74,106 @@ fun AboutScreen(
                 .fillMaxSize()
                 .layerBackdrop(topBarBackdrop),
         ) {
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = padding.calculateTopPadding() + 8.dp,
+                    bottom = padding.calculateBottomPadding() + 24.dp,
+                ),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 // 版本信息
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    insideMargin = PaddingValues(16.dp),
-                ) {
-                    Column {
-                        Text(
-                            text = "去你妈的e网通",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MiuixTheme.colorScheme.onSurface,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "Fuck Ewt · v1.0.0 · MIUIX 风格 · 答案与解析来自 EWT360 官方接口",
-                            fontSize = 12.sp,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                    }
-                }
-
-                // 设置：MiSans 字体
-                SmallTitle("设置")
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                ) {
-                    Row(
+                item(key = "version") {
+                    Card(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
+                        insideMargin = PaddingValues(16.dp),
                     ) {
-                        Column(Modifier.weight(1f)) {
+                        Column {
                             Text(
-                                text = "MiSans 字体",
-                                fontSize = 15.sp,
+                                text = "去你妈的e网通",
+                                fontSize = 17.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = MiuixTheme.colorScheme.onSurface,
                             )
-                            Spacer(Modifier.height(3.dp))
+                            Spacer(Modifier.height(4.dp))
                             Text(
-                                text = if (fontEnabled && fontMb.isNotBlank()) {
-                                    "已启用（占用 $fontMb）"
-                                } else {
-                                    "未启用（已下载的字体文件会保留，重新开启免下载）"
-                                },
+                                text = "Fuck Ewt · v1.0.0 · MIUIX 风格 · 答案与解析来自 EWT360 官方接口",
                                 fontSize = 12.sp,
                                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                             )
                         }
-                        Switch(
-                            checked = fontEnabled,
-                            onCheckedChange = onFontEnabledChange,
-                        )
+                    }
+                }
+
+                // 设置：MiSans 字体
+                item(key = "font_title") {
+                    SmallTitle("设置")
+                }
+                item(key = "font") {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = "MiSans 字体",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MiuixTheme.colorScheme.onSurface,
+                                )
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    text = if (fontEnabled && fontMb.isNotBlank()) {
+                                        "已启用（占用 $fontMb）"
+                                    } else {
+                                        "未启用（已下载的字体文件会保留，重新开启免下载）"
+                                    },
+                                    fontSize = 12.sp,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                )
+                            }
+                            Switch(
+                                checked = fontEnabled,
+                                onCheckedChange = onFontEnabledChange,
+                            )
+                        }
                     }
                 }
 
                 // 关于入口（占位页，后续完善）
-                ActionCard(
-                    title = "关于",
-                    subtitle = "版本信息 / 项目说明",
-                    onClick = onOpenAbout,
-                )
+                item(key = "about") {
+                    ActionCard(
+                        title = "关于",
+                        subtitle = "版本信息 / 项目说明",
+                        onClick = onOpenAbout,
+                    )
+                }
 
                 // 调试模式入口
-                ActionCard(
-                    title = "调试模式",
-                    subtitle = "查看日志 / 分享日志 / 下载字体",
-                    onClick = onOpenDebug,
-                )
+                item(key = "debug") {
+                    ActionCard(
+                        title = "调试模式",
+                        subtitle = "查看日志 / 分享日志 / 下载字体",
+                        onClick = onOpenDebug,
+                    )
+                }
 
                 // 退出登录
-                ActionCard(
-                    title = "退出登录",
-                    subtitle = "清除登录状态并返回登录页",
-                    titleColor = MiuixTheme.colorScheme.error,
-                    onClick = onLogout,
-                )
+                item(key = "logout") {
+                    ActionCard(
+                        title = "退出登录",
+                        subtitle = "清除登录状态并返回登录页",
+                        titleColor = MiuixTheme.colorScheme.error,
+                        onClick = onLogout,
+                    )
+                }
             }
         }
     }
@@ -170,7 +184,7 @@ fun AboutScreen(
 fun AboutPlaceholderScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
-            TopAppBar(
+            top.yukonga.miuix.kmp.basic.TopAppBar(
                 title = "关于",
                 titlePadding = 16.dp,
                 navigationIcon = {
