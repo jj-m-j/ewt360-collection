@@ -76,8 +76,8 @@ sealed class Screen {
     data object Debug : Screen()
     /** 关于（占位页，从设置页进入） */
     data object About : Screen()
-    /** 课程网页模式（WebView 兜底，独立页避免 backdrop 闪烁） */
-    data object CourseWeb : Screen()
+    /** 课程设置页（课程页顶栏齿轮进入） */
+    data object CourseSettings : Screen()
     data class Questions(val paper: Paper) : Screen()
 }
 
@@ -326,7 +326,7 @@ fun AppRoot() {
                                 targetState is Screen.LinkQuery ||
                                 targetState is Screen.Debug ||
                                 targetState is Screen.About ||
-                                targetState is Screen.CourseWeb -> {
+                                targetState is Screen.CourseSettings -> {
                                 (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
                                     .togetherWith(fadeOut(tween(200)))
                             }
@@ -432,7 +432,7 @@ private fun RenderScreen(
             onOpenLinkQuery = { navigateTo(Screen.LinkQuery) },
             onOpenDebug = { navigateTo(Screen.Debug) },
             onOpenAbout = { navigateTo(Screen.About) },
-            onOpenCourseWeb = { navigateTo(Screen.CourseWeb) },
+            onOpenCourseSettings = { navigateTo(Screen.CourseSettings) },
             onLogout = {
                 repo.clearToken()
                 navigateTo(Screen.Login)
@@ -448,7 +448,7 @@ private fun RenderScreen(
         Screen.About -> AboutPlaceholderScreen(
             onBack = onBack,
         )
-        Screen.CourseWeb -> WebCourseScreen(
+        Screen.CourseSettings -> CourseSettingsScreen(
             onBack = onBack,
         )
         is Screen.Questions -> QuestionsScreen(
@@ -473,7 +473,7 @@ private fun MainLayer(
     onOpenLinkQuery: () -> Unit,
     onOpenDebug: () -> Unit,
     onOpenAbout: () -> Unit,
-    onOpenCourseWeb: () -> Unit,
+    onOpenCourseSettings: () -> Unit,
     onLogout: () -> Unit,
 ) {
     // 玻璃底栏的反射源：捕获整个 Tab 内容（列表滚动画面；顶栏 blur 在页面内部用独立 backdrop，避免成环）
@@ -500,7 +500,7 @@ private fun MainLayer(
         ) { t ->
             when (t) {
                 TAB_COURSE -> CourseScreen(
-                    onOpenWeb = onOpenCourseWeb,
+                    onOpenSettings = onOpenCourseSettings,
                 )
                 TAB_PAPERS -> HomeScreen(
                     userInfo = userInfo,
