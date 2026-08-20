@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ewt.answer.data.CourseRepository
+import com.ewt.answer.data.SecureTokenStore
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
@@ -59,7 +60,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /**
  * 课程页（WebView 刷课版）：
  * 大标题（miuix title1 排版）→ 概览卡（课时统计 + 开始/停止 + 实时进度 + URL 复制）→ WebView（真实浏览器环境）。
- * WebView 复用登录 Cookie + 伪装 Chrome Android UA（避免 EWT 识别 WebView 跳 app 下载页），
+ * WebView 加载前注入 app token 到 cookie（接续登录态，不依赖 web 会话存活），默认 UA（与登录页一致，渲染正常）；
  * 注入 JS 自动连播（85% 切换 + 2 倍速 + 自动过检 + 锁进度条 + 跳题），JS↔原生桥实时回传进度；
  * 拦截 ewt app 跳转/下载/下载引导页。
  */
@@ -397,13 +398,18 @@ private fun createBrushWebView(
     wv.settings.domStorageEnabled = true
     wv.settings.databaseEnabled = true
     wv.settings.allowFileAccess = false
-    // 伪装真实 Chrome Android UA：EWT 识别到 WebView UA 会跳 app 下载页（from=appDownloadPage）
-    wv.settings.userAgentString =
-        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
     // 允许自动播放（不要求用户手势）
     wv.settings.mediaPlaybackRequiresUserGesture = false
     // JS↔原生桥
     wv.addJavascriptInterface(BrushBridge(onProgress), "AndroidBridge")
+    // 注入 app token 到 cookie：接续登录态（不依赖 web 会话存活），避免跳到下载页
+    val token = SecureTokenStore(context).load()
+    if (!token.isNullOrBlank()) {
+        CookieManager.getInstance().setCookie("https://web.ewt360.com/", "token=$token")
+        CookieManager.getInstance().setCookie("https://www.ewt360.com/", "token=$token")
+        CookieManager.getInstance().setCookie("https://ewt360.com/", "token=$token")
+        CookieManager.getInstance().flush()
+    }
     wv.webViewClient = object : WebViewClient() {
         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
             // 页面跳转后重置刷课状态，避免旧页面定时器失效
