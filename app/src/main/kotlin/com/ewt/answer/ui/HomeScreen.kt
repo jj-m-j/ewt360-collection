@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.toPx
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -592,7 +593,7 @@ private fun FilterRow(
 private enum class FilterPane { Main, Date, Subject }
 
 /**
- * 三条杠弹层 —— Circle → Capsule → Dialog 连续 Morph（缩小版：固定 260dp，滚轮 3 项）
+ * 三条杠弹层 —— Circle → Capsule → Dialog 连续 Morph（缩小版：固定 260×240，滚轮 3 项）
  */
 @Composable
 private fun FilterPopupCard(
