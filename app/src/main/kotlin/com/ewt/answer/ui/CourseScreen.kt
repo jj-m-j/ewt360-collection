@@ -1,16 +1,16 @@
 package com.ewt.answer.ui
 
-import android.annotation.SuppressLint
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -19,29 +19,39 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ewt.answer.data.CourseRepository
+import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 课程页：原生视频课刷课（默认）。网页模式已独立为 [WebCourseScreen]（脱离主层 backdrop，避免闪烁）。
+ * 课程页：原生视频课刷课。顶栏设置图标进入课程设置页。
  */
 @Composable
 fun CourseScreen(
-    onOpenWeb: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
 ) {
-    val vm: com.ewt.answer.ui.CourseViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+    val vm: com.ewt.answer.ui.CourseViewModel = viewModel(
         factory = com.ewt.answer.ui.CourseViewModel.Factory,
     )
     val uiState by vm.uiState.collectAsState()
@@ -49,8 +59,14 @@ fun CourseScreen(
     val brushingAll by vm.brushingAll.collectAsState()
     val summary by vm.summary.collectAsState()
     val statusText by vm.statusText.collectAsState()
+    val context = LocalContext.current
 
-    LaunchedEffect(Unit) { vm.load() }
+    LaunchedEffect(Unit) {
+        // 读取课程设置（并发路数），再触发扫描
+        val prefs = context.getSharedPreferences("ewt_prefs", android.content.Context.MODE_PRIVATE)
+        CourseRepository.burstSize = prefs.getInt("course_burst", 1)
+        vm.load()
+    }
 
     Scaffold(
         topBar = {
@@ -58,10 +74,13 @@ fun CourseScreen(
                 title = "课程",
                 titlePadding = 16.dp,
                 actions = {
-                    top.yukonga.miuix.kmp.basic.TextButton(
-                        text = "网页模式",
-                        onClick = onOpenWeb,
-                    )
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(
+                            imageVector = SettingsTabIcon,
+                            contentDescription = "课程设置",
+                            tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                        )
+                    }
                 },
             )
         },
@@ -82,20 +101,20 @@ fun CourseScreen(
                     text = when {
                         brushingAll && summary.isNotBlank() -> "批量刷课中：$summary"
                         uiState is com.ewt.answer.ui.CourseViewModel.UiState.Loading -> statusText.ifBlank { "扫描中…" }
-                        else -> "点击课时开始刷课；竞态爆发上报，约 1 小时课时 1~2 分钟刷完"
+                        else -> "点击课时开始刷课（当前并发 ${CourseRepository.burstSize} 路）"
                     },
                     fontSize = 12.sp,
                     color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 )
             }
             // 操作行
-            androidx.compose.foundation.layout.Row(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 2.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                top.yukonga.miuix.kmp.basic.Button(
+                Button(
                     onClick = { vm.brushAll() },
                     enabled = !brushingAll && uiState is com.ewt.answer.ui.CourseViewModel.UiState.Ready,
                     modifier = Modifier.weight(1f),
@@ -103,8 +122,8 @@ fun CourseScreen(
                     Text(if (brushingAll) "批量刷课中…" else "刷全部未完成", fontSize = 14.sp)
                 }
                 if (brushingAll) {
-                    androidx.compose.foundation.layout.Spacer(Modifier.width(10.dp))
-                    top.yukonga.miuix.kmp.basic.TextButton(
+                    Spacer(Modifier.width(10.dp))
+                    TextButton(
                         text = "停止",
                         onClick = { vm.stop() },
                     )
@@ -117,42 +136,42 @@ fun CourseScreen(
                         Modifier
                             .fillMaxWidth()
                             .padding(vertical = 40.dp),
-                        contentAlignment = androidx.compose.ui.Alignment.Center,
+                        contentAlignment = Alignment.Center,
                     ) {
-                        top.yukonga.miuix.kmp.basic.CircularProgressIndicator()
+                        CircularProgressIndicator()
                     }
                     if (statusText.isNotBlank()) {
                         Text(
                             text = statusText,
                             modifier = Modifier.fillMaxWidth(),
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            textAlign = TextAlign.Center,
                             fontSize = 12.sp,
                             color = MiuixTheme.colorScheme.onBackgroundVariant,
                         )
                     }
                 }
                 is com.ewt.answer.ui.CourseViewModel.UiState.Error -> {
-                    androidx.compose.foundation.layout.Column(
+                    Column(
                         Modifier
                             .fillMaxWidth()
                             .padding(vertical = 48.dp),
-                        horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                        horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
                         Text(
                             state.message,
                             fontSize = 14.sp,
                             color = MiuixTheme.colorScheme.error,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            textAlign = TextAlign.Center,
                         )
-                        androidx.compose.foundation.layout.Spacer(Modifier.height(12.dp))
-                        top.yukonga.miuix.kmp.basic.TextButton(
+                        Spacer(Modifier.height(12.dp))
+                        TextButton(
                             text = "重试",
                             onClick = { vm.load() },
                         )
                     }
                 }
                 is com.ewt.answer.ui.CourseViewModel.UiState.Ready -> {
-                    androidx.compose.foundation.lazy.LazyColumn(
+                    LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(
                             start = 16.dp,
@@ -164,7 +183,7 @@ fun CourseScreen(
                     ) {
                         state.groups.forEach { group ->
                             item(key = "group_${group.homeworkTitle}") {
-                                top.yukonga.miuix.kmp.basic.SmallTitle(text = group.homeworkTitle)
+                                SmallTitle(text = group.homeworkTitle)
                             }
                             items(group.lessons, key = { "lesson_${it.lessonId}" }) { lesson ->
                                 val ui = lessons[lesson.lessonId]
@@ -201,20 +220,20 @@ private fun LessonCard(
         onClick = onClick,
     ) {
         Column {
-            androidx.compose.foundation.layout.Row(
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
                     Text(
                         text = lesson.title,
                         fontSize = 15.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                        fontWeight = FontWeight.Medium,
                         maxLines = 2,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Ellipsis,
                         color = MiuixTheme.colorScheme.onSurface,
                     )
-                    androidx.compose.foundation.layout.Spacer(Modifier.height(3.dp))
+                    Spacer(Modifier.height(3.dp))
                     val durText = if (lesson.durationSec > 0) {
                         val min = lesson.durationSec / 60
                         if (min > 0) "约 $min 分钟" else "${lesson.durationSec} 秒"
@@ -230,15 +249,15 @@ private fun LessonCard(
                         fontSize = 12.sp,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
+                Spacer(Modifier.size(8.dp))
                 if (running) {
                     Text(
                         text = if (percent > 0) "$percent%" else "…",
                         fontSize = 13.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                        fontWeight = FontWeight.Medium,
                         color = MiuixTheme.colorScheme.primary,
                     )
                 } else {
@@ -250,7 +269,7 @@ private fun LessonCard(
                             else -> "未开始"
                         },
                         fontSize = 12.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                        fontWeight = FontWeight.Medium,
                         color = when {
                             done || lesson.finished -> MiuixTheme.colorScheme.primary
                             failed -> MiuixTheme.colorScheme.error
@@ -258,7 +277,7 @@ private fun LessonCard(
                         },
                     )
                 }
-                androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(6.dp))
                 Icon(
                     imageVector = MiuixIcons.Basic.ArrowRight,
                     contentDescription = "刷课",
@@ -267,100 +286,21 @@ private fun LessonCard(
                 )
             }
             if (running || percent > 0 || ui?.message?.isNotBlank() == true) {
-                androidx.compose.foundation.layout.Spacer(Modifier.height(8.dp))
-                top.yukonga.miuix.kmp.basic.LinearProgressIndicator(
+                Spacer(Modifier.height(8.dp))
+                LinearProgressIndicator(
                     progress = (percent / 100f).coerceIn(0f, 1f),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 if (ui?.message?.isNotBlank() == true) {
-                    androidx.compose.foundation.layout.Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(4.dp))
                     Text(
                         text = ui.message,
                         fontSize = 11.sp,
                         color = if (failed) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-            }
-        }
-    }
-}
-
-/** 网页模式独立页：WebView + 注入刷课助手脚本（EWT360-Helper，兜底）。脱离主层 backdrop，不闪烁。 */
-@Composable
-fun WebCourseScreen(onBack: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    var injected by remember { mutableStateOf(false) }
-    var status by remember { mutableStateOf("加载中…") }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = "课程 · 网页模式",
-                titlePadding = 16.dp,
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = MiuixIcons.Basic.ArrowRight,
-                            contentDescription = "返回",
-                            tint = MiuixTheme.colorScheme.onSurface,
-                            modifier = Modifier.rotate(180f),
-                        )
-                    }
-                },
-            )
-        },
-    ) { padding ->
-        Column(
-            Modifier
-                .fillMaxSize()
-                .padding(padding),
-        ) {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                insideMargin = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    text = "刷课助手：$status\n打开课程视频后，点击页面右下角 📚 图标可开启 自动跳题 / 自动连播 / 自动过检 / 2倍速 / 刷课模式。",
-                    fontSize = 11.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
-                )
-            }
-            androidx.compose.foundation.layout.Box(Modifier.weight(1f)) {
-                AndroidView(
-                    factory = { ctx ->
-                        @SuppressLint("SetJavaScriptEnabled")
-                        WebView(ctx).apply {
-                            settings.javaScriptEnabled = true
-                            settings.domStorageEnabled = true
-                            settings.mediaPlaybackRequiresUserGesture = false
-                            settings.loadWithOverviewMode = true
-                            settings.useWideViewPort = true
-                            webViewClient = object : WebViewClient() {
-                                override fun onPageFinished(view: WebView?, url: String?) {
-                                    super.onPageFinished(view, url)
-                                    if (!injected) {
-                                        injected = true
-                                        val js = runCatching {
-                                            ctx.assets.open("ewt_helper.js").bufferedReader().readText()
-                                        }.getOrNull()
-                                        if (!js.isNullOrBlank()) {
-                                            view?.evaluateJavascript(js, null)
-                                            status = "已注入（打开视频后点右下角 📚）"
-                                        } else {
-                                            status = "脚本加载失败"
-                                        }
-                                    }
-                                }
-                            }
-                            loadUrl("https://web.ewt360.com/site-study/")
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize(),
-                )
             }
         }
     }
