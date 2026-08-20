@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -59,8 +60,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * 课程页（WebView 刷课版）：
- * 大标题（miuix title1 排版）→ 概览卡（课时统计 + 开始/停止 + 实时进度 + URL 复制）→ WebView（真实浏览器环境）。
- * WebView 加载前注入 app token 到 cookie（接续登录态，不依赖 web 会话存活），默认 UA（与登录页一致，渲染正常）；
+ * 大标题（miuix title1 排版）→ 概览卡（课时统计 + 开始/停止 + 实时进度 + URL 复制）→ WebView（真实浏览器环境，固定 60% 高度）。
+ * WebView 加载前注入 app token 到 cookie（接续登录态）；默认 UA 与登录页一致；
  * 注入 JS 自动连播（85% 切换 + 2 倍速 + 自动过检 + 锁进度条 + 跳题），JS↔原生桥实时回传进度；
  * 拦截 ewt app 跳转/下载/下载引导页。
  */
@@ -243,11 +244,11 @@ fun CourseScreen(
             }
         }
 
-        // ── WebView（真实浏览器环境刷课主体） ──
+        // ── WebView（真实浏览器环境刷课主体，固定 60% 高度，避免 weight+AndroidView 布局异常白屏） ──
         Box(
             Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .fillMaxHeight(0.6f),
         ) {
             AndroidView(
                 factory = { ctx ->
@@ -403,7 +404,7 @@ private fun createBrushWebView(
     // JS↔原生桥
     wv.addJavascriptInterface(BrushBridge(onProgress), "AndroidBridge")
     // 注入 app token 到 cookie：接续登录态（不依赖 web 会话存活），避免跳到下载页
-    val token = SecureTokenStore(context).load()
+    val token = runCatching { SecureTokenStore(context).load() }.getOrNull()
     if (!token.isNullOrBlank()) {
         CookieManager.getInstance().setCookie("https://web.ewt360.com/", "token=$token")
         CookieManager.getInstance().setCookie("https://www.ewt360.com/", "token=$token")

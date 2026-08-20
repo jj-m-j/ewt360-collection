@@ -208,31 +208,21 @@ fun HomeScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            // 大标题行（miuix 原生排版：左右 26dp 边距、下方留白）+ 右侧刷新
+            // 大标题行（miuix 原生排版：左右 26dp 边距、下方 24dp 留白与搜索框拉开距离）+ 右侧刷新
             item(key = "large_title") {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 10.dp, end = 0.dp, top = 4.dp, bottom = 14.dp),
+                        .padding(start = 10.dp, end = 0.dp, top = 4.dp, bottom = 24.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = "试卷列表",
-                            fontSize = MiuixTheme.textStyles.title1.fontSize,
-                            fontWeight = FontWeight.Normal,
-                            color = MiuixTheme.colorScheme.onSurface,
-                        )
-                        val greet = userInfo?.realName?.let { "你好，$it" } ?: ""
-                        if (greet.isNotEmpty()) {
-                            Spacer(Modifier.height(2.dp))
-                            Text(
-                                text = greet,
-                                style = MiuixTheme.textStyles.body2,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            )
-                        }
-                    }
+                    Text(
+                        text = "试卷列表",
+                        fontSize = MiuixTheme.textStyles.title1.fontSize,
+                        fontWeight = FontWeight.Normal,
+                        color = MiuixTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
                     IconButton(
                         onClick = { vm.load(force = true) },
                         modifier = Modifier.size(40.dp),
