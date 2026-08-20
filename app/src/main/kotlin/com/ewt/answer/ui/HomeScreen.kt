@@ -168,8 +168,8 @@ fun HomeScreen(
     LaunchedEffect(Unit) { vm.load() }
 
     // ── 滚动收缩进度：基于列表滚动距离连续插值（非阈值切换） ──
-    // roundToPx 是 Density 成员方法（纯 Density 作用域可用，无需 import）
-    val collapseDistance = with(LocalDensity.current) { roundToPx(64.dp).toFloat() }
+    // with(LocalDensity.current) { dp.toPx() } —— miuix Surface 同款写法（Dp.toPx 无参成员扩展）
+    val collapseDistance = with(LocalDensity.current) { 64.dp.toPx() }
     val collapseProgress by remember(listState) {
         derivedStateOf {
             val info = listState.layoutInfo
@@ -419,6 +419,7 @@ private fun CollapsingHeader(
 ) {
     val headerHeight = lerp(92.dp, 52.dp, progress)
     val titleSize = lerp(26.sp, 17.sp, progress)
+    val density = LocalDensity.current
 
     BoxWithConstraints(
         modifier = Modifier
@@ -434,8 +435,10 @@ private fun CollapsingHeader(
                 },
             ),
     ) {
-        // 容器宽度 px：Dp.value * density（纯 Density 作用域不依赖 toPx 扩展）
-        val containerW = maxWidth.value * density
+        // px 换算全部在 composable 作用域预计算（miuix 同款 with(density){dp.toPx()}），graphicsLayer 只引用 Float
+        val containerW = with(density) { maxWidth.toPx() }
+        val offset16Px = with(density) { 16.dp.toPx() }
+        val offset8Px = with(density) { 8.dp.toPx() }
         var columnW by remember { mutableIntStateOf(0) }
         Box(
             Modifier.fillMaxSize(),
@@ -447,8 +450,7 @@ private fun CollapsingHeader(
                     .onSizeChanged { columnW = it.width }
                     .graphicsLayer {
                         // progress=0 时标题区位于左侧 16dp；progress=1 时水平居中（连续插值）
-                        // GraphicsLayerScope 提供无参 Dp.toPx() 成员扩展
-                        translationX = (1f - progress) * -(containerW / 2f - 16.dp.toPx() - columnW / 2f)
+                        translationX = (1f - progress) * -(containerW / 2f - offset16Px - columnW / 2f)
                     },
             ) {
                 Text(
@@ -467,7 +469,7 @@ private fun CollapsingHeader(
                     maxLines = 1,
                     modifier = Modifier.graphicsLayer {
                         alpha = 1f - progress
-                        translationY = -8.dp.toPx() * progress
+                        translationY = -offset8Px * progress
                         scaleX = 1f - 0.04f * progress
                         scaleY = 1f - 0.04f * progress
                     },
@@ -619,6 +621,8 @@ private fun FilterPopupCard(
     val morph = remember { Animatable(0f) }
     val contentProgress = remember { Animatable(0f) }
     val exitContent = remember { Animatable(0f) }
+    // 预计算 px（graphicsLayer 内只引用 Float）
+    val offset6Px = with(LocalDensity.current) { 6.dp.toPx() }
 
     val morphEase = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
@@ -665,7 +669,7 @@ private fun FilterPopupCard(
                 .fillMaxSize()
                 .graphicsLayer {
                     alpha = contentAlpha
-                    translationY = (1f - contentAlpha) * 6f.dp.toPx()
+                    translationY = (1f - contentAlpha) * offset6Px
                 },
         ) {
             AnimatedContent(
