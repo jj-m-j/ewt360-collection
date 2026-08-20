@@ -68,7 +68,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.toPx
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -169,7 +168,8 @@ fun HomeScreen(
     LaunchedEffect(Unit) { vm.load() }
 
     // ── 滚动收缩进度：基于列表滚动距离连续插值（非阈值切换） ──
-    val collapseDistance = with(LocalDensity.current) { toPx(64.dp) }
+    // roundToPx 是 Density 成员方法（纯 Density 作用域可用，无需 import）
+    val collapseDistance = with(LocalDensity.current) { roundToPx(64.dp).toFloat() }
     val collapseProgress by remember(listState) {
         derivedStateOf {
             val info = listState.layoutInfo
@@ -434,7 +434,8 @@ private fun CollapsingHeader(
                 },
             ),
     ) {
-        val containerW = toPx(maxWidth)
+        // 容器宽度 px：Dp.value * density（纯 Density 作用域不依赖 toPx 扩展）
+        val containerW = maxWidth.value * density
         var columnW by remember { mutableIntStateOf(0) }
         Box(
             Modifier.fillMaxSize(),
@@ -446,7 +447,8 @@ private fun CollapsingHeader(
                     .onSizeChanged { columnW = it.width }
                     .graphicsLayer {
                         // progress=0 时标题区位于左侧 16dp；progress=1 时水平居中（连续插值）
-                        translationX = (1f - progress) * -(containerW / 2f - toPx(16.dp) - columnW / 2f)
+                        // GraphicsLayerScope 提供无参 Dp.toPx() 成员扩展
+                        translationX = (1f - progress) * -(containerW / 2f - 16.dp.toPx() - columnW / 2f)
                     },
             ) {
                 Text(
@@ -465,7 +467,7 @@ private fun CollapsingHeader(
                     maxLines = 1,
                     modifier = Modifier.graphicsLayer {
                         alpha = 1f - progress
-                        translationY = -toPx(8.dp) * progress
+                        translationY = -8.dp.toPx() * progress
                         scaleX = 1f - 0.04f * progress
                         scaleY = 1f - 0.04f * progress
                     },
