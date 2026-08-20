@@ -1,12 +1,10 @@
 package com.ewt.answer.ui
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,12 +12,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.onSizeChanged
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,24 +40,22 @@ import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
+import com.kyant.shapes.Capsule
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 液体玻璃悬浮底栏（按 backdrop 官方 Glass Bottom Bar 教程实现）：
+ * 液体玻璃悬浮底栏（紧凑悬浮胶囊）：
  *
- * 效果参数对齐官方文档：
- * - effects: vibrancy() + blur(4dp) + lens(16dp, 32dp)
- * - shape:   CircleShape（胶囊）
- * - onDrawSurface: 半透明白（0.5）
- * - layerBlock: 按压缩放（backdrop 不缩放，仅内容缩放）
+ * 结构（严格参考官方 LiquidBottomTabs / Glass Bottom Bar 教程）：
+ * 1. 玻璃面板：vibrancy + blur(4dp) + lens(16dp,32dp) 边缘折射 + 常态顶部高光 + 半透明 Surface
+ * 2. 液态选中滑块：Spring 位置动画 + 速度驱动拉伸（移动中拉长、到位回弹）+
+ *    长按时色差折射 / 高光 / 投影 / 内阴影增强（官方 InteractiveHighlight）
+ * 3. 文字内容：Miuix 风格，选中 MIUI 蓝
  *
- * 叠加液态选中滑块（catalog LiquidBottomTabs 思路）：
- * - Spring 位置动画 + 速度驱动拉伸（移动中拉长、到位回弹）
- * - 长按时色差折射/高光/投影/内阴影增强
- *
- * 兼容性：blur（Android 12+）、lens（Android 13+）自动降级为半透明 Surface。
+ * 宽度：内容包裹（Tab 文字 + 内边距），左右留 24dp，明显悬浮，非全宽。
+ * 兼容：blur（Android 12+）、lens（Android 13+ AGSL）自动降级为半透明 Surface。
  */
 @Composable
 fun LiquidGlassBottomBar(
@@ -67,44 +65,53 @@ fun LiquidGlassBottomBar(
     backdrop: LayerBackdrop,
     modifier: Modifier = Modifier,
 ) {
+    val isLight = !isSystemInDarkTheme()
+    // 官方 Demo 配色：accent 为 MIUI 蓝
+    val accentColor = if (isLight) Color(0xFF0088FF) else Color(0xFF0091FF)
     val surfaceColor = MiuixTheme.colorScheme.surface
     val density = LocalDensity.current
-    val isLight = !isSystemInDarkTheme()
 
     val scope = rememberCoroutineScope()
     val highlight = remember(scope) { InteractiveHighlight(scope) }
 
-    // 液态滑块位置（0..tabs.size-1），Spring 移动 + 轻微回弹
+    // 液态滑块位置（0..tabs.size-1），官方 spring(0.5, 300, 0.001)
     val selector = remember { Animatable(selectedIndex.toFloat()) }
     LaunchedEffect(selectedIndex) {
         selector.animateTo(
             selectedIndex.toFloat(),
-            spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
+            spring(dampingRatio = 0.5f, stiffness = 300f, visibilityThreshold = 0.001f),
         )
     }
 
-    BoxWithConstraints(
+    // 底栏实际宽度（内容决定，onSizeChanged 记录）
+    var barWidthPx by remember { mutableIntStateOf(0) }
+    val tabWidthPx = if (tabs.isEmpty()) 0 else barWidthPx / tabs.size
+
+    Box(
         modifier
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 10.dp)
-            .shadow(6.dp, CircleShape, clip = false)
+            .padding(horizontal = 24.dp, vertical = 10.dp)
+            .shadow(8.dp, Capsule, clip = false)
             .height(56.dp)
-            .clip(CircleShape),
+            .clip(Capsule)
+            .onSizeChanged { barWidthPx = it.width },
+        contentAlignment = Alignment.Center,
     ) {
-        val tabWidth = maxWidth / tabs.size
-        val tabWidthPx = with(density) { tabWidth.toPx() }
-
-        // ── 1. 玻璃面板（官方效果参数） ──
+        // ── 1. 玻璃面板（官方效果参数，matchParentSize 精确铺满父） ──
         Box(
             Modifier
-                .fillMaxSize()
+                .matchParentSize()
                 .drawBackdrop(
                     backdrop = backdrop,
-                    shape = { CircleShape },
+                    shape = { Capsule },
                     effects = {
                         vibrancy()
                         blur(4f.dp.toPx())
                         lens(16f.dp.toPx(), 32f.dp.toPx())
+                    },
+                    // 常态玻璃顶部高光（柔和，官方 Highlight 思路）
+                    highlight = {
+                        Highlight.Default.copy(alpha = 0.25f)
                     },
                     // 按压缩放放 layerBlock：backdrop 不跟随缩放（官方 Interactive 教程）
                     layerBlock = {
@@ -119,22 +126,22 @@ fun LiquidGlassBottomBar(
                 .then(highlight.modifier),
         )
 
-        // ── 2. 液态选中滑块：位置 Spring + 速度拉伸 + 折射/高光/阴影（长按增强） ──
+        // ── 2. 液态选中滑块（官方 LiquidBottomTabs 滑块：位置 Spring + 速度拉伸） ──
         Box(
             Modifier
-                .fillMaxHeight()
-                .width(tabWidth)
+                .height(56.dp)
+                .width(if (tabWidthPx > 0) tabWidthPx.dp else 0.dp)
                 .graphicsLayer {
                     translationX = selector.value * tabWidthPx
-                    // 液态拉伸：移动速度越大拉得越长，到位自然回弹
+                    // 液态拉伸：移动速度越大拉得越长，到位自然回弹（克制）
                     val v = selector.velocity
-                    val stretch = (v / tabWidthPx).coerceIn(-0.22f, 0.22f)
+                    val stretch = if (tabWidthPx > 0) (v / tabWidthPx).coerceIn(-0.22f, 0.22f) else 0f
                     scaleX = 1f + stretch
                     scaleY = 1f - stretch * 0.35f
                 }
                 .drawBackdrop(
                     backdrop = backdrop,
-                    shape = { CircleShape },
+                    shape = { Capsule },
                     effects = {
                         val p = highlight.pressProgress
                         if (p > 0f) {
@@ -155,21 +162,22 @@ fun LiquidGlassBottomBar(
                     },
                     onDrawSurface = {
                         drawRect(
-                            if (isLight) Color.Black.copy(0.05f) else Color.White.copy(0.06f),
+                            if (isLight) Color.Black.copy(0.08f) else Color.White.copy(0.08f),
                         )
                     },
                 )
                 .then(highlight.gestureModifier),
         )
 
-        // ── 3. 文字内容（Miuix 风格，清晰前景） ──
-        Row(Modifier.fillMaxSize()) {
+        // ── 3. 文字内容（决定底栏宽度；Miuix 风格） ──
+        Row(Modifier.height(56.dp)) {
             tabs.forEachIndexed { index, label ->
                 LiquidGlassTabItem(
                     text = label,
                     selected = index == selectedIndex,
+                    accentColor = accentColor,
                     onClick = { onTabSelected(index) },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.padding(horizontal = 26.dp),
                 )
             }
         }
@@ -180,12 +188,13 @@ fun LiquidGlassBottomBar(
 private fun LiquidGlassTabItem(
     text: String,
     selected: Boolean,
+    accentColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier
-            .fillMaxSize()
+            .fillMaxHeight()
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -193,7 +202,7 @@ private fun LiquidGlassTabItem(
             text = text,
             fontSize = 15.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            color = if (selected) accentColor else MiuixTheme.colorScheme.onSurfaceVariantSummary,
             textAlign = TextAlign.Center,
         )
     }
