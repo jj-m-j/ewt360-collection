@@ -421,7 +421,7 @@ private fun RenderScreen(
     }
 }
 
-/** 主层：页面内容（作为液态玻璃 backdrop 源）+ 液态玻璃悬浮底栏（窄胶囊，居中悬浮） */
+/** 主层：页面内容（作为液态玻璃底栏 backdrop 源）+ 液态玻璃悬浮底栏（窄胶囊，居中悬浮） */
 @Composable
 private fun MainLayer(
     userInfo: UserInfo?,
@@ -438,7 +438,7 @@ private fun MainLayer(
     onOpenDebug: () -> Unit,
     onLogout: () -> Unit,
 ) {
-    // 玻璃底栏 / 顶栏模糊的反射源：捕获整个 Tab 内容（列表滚动画面）
+    // 玻璃底栏的反射源：捕获整个 Tab 内容（列表滚动画面；顶栏 blur 在页面内部用独立 backdrop，避免成环）
     val backdrop = rememberLayerBackdrop()
     // 稳定 lambda + 动态读取当前 tab（避免捕获旧值导致底栏不同步）
     val currentTab = rememberUpdatedState(tab)
@@ -463,7 +463,6 @@ private fun MainLayer(
                     accuracy = accuracy,
                     onOpenPaper = onOpenPaper,
                     onOpenLinkQuery = onOpenLinkQuery,
-                    backdrop = backdrop,
                 )
                 else -> AboutScreen(
                     accuracy = accuracy,
@@ -473,11 +472,10 @@ private fun MainLayer(
                     onFontEnabledChange = onFontEnabledChange,
                     onOpenDebug = onOpenDebug,
                     onLogout = onLogout,
-                    backdrop = backdrop,
                 )
             }
         }
-        // 液态玻璃悬浮底栏：内容包裹窄胶囊，居中悬浮
+        // 液态玻璃悬浮底栏：内容包裹窄胶囊，居中悬浮（在内容层之外采样，无递归）
         LiquidGlassBottomBar(
             tabs = listOf(
                 LiquidGlassTab(icon = PaperTabIcon, label = "试卷"),
