@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -90,7 +90,7 @@ fun QuestionsScreen(
 
     var showSubmitDialog by remember { mutableStateOf(false) }
     // 目标正确率区间输入（提交时弹窗），默认 80-90
-    val rateState = rememberTextFieldState(initial = "80-90")
+    val rateState = remember { TextFieldState("80-90") }
 
     LaunchedEffect(Unit) { vm.load() }
 
@@ -244,9 +244,6 @@ fun QuestionsScreen(
                     Button(
                         onClick = {
                             val range = parseRateRange(rateState.text.toString())
-                            if (range == null) {
-                                submitResult
-                            }
                             showSubmitDialog = false
                             val rate = if (range != null) Random.nextInt(range.first, range.last + 1) else 100
                             vm.submitAnswers(targetRate = rate)

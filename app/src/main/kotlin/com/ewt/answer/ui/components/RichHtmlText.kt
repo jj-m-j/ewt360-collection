@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import com.ewt.answer.data.HtmlCleaner
+import okhttp3.Headers
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -66,13 +67,17 @@ fun AttachmentImageList(urls: List<String>, modifier: Modifier = Modifier) {
 @Composable
 private fun EwtImage(url: String) {
     val context = LocalContext.current
-    val model = remember(url) {
+    val model: ImageRequest = remember(url) {
         val u = normalizeEwtImageUrl(url)
         ImageRequest.Builder(context)
             .data(u)
-            .setHeader("User-Agent", "Mozilla/5.0")
-            .setHeader("Referer", "https://web.ewt360.com/mystudy/")
-            .setHeader("Origin", "https://web.ewt360.com")
+            .headers(
+                Headers.Builder()
+                    .add("User-Agent", "Mozilla/5.0")
+                    .add("Referer", "https://web.ewt360.com/mystudy/")
+                    .add("Origin", "https://web.ewt360.com")
+                    .build(),
+            )
             .build()
     }
     AsyncImage(
