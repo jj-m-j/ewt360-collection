@@ -432,7 +432,8 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
     /**
      * 提交整卷答案并交卷自批。
      * @param targetRate 整卷目标正确率 0-100：客观题由系统阅卷必对；
-     *   主观题按“对 100% / 半对 50% / 错 0%”分配，使整卷正确率尽量落在目标率。
+     *   主观题按“对 100% / 半对 50% / 错 0%”分配，使整卷正确率落在用户区间内，
+     *   并在结果中回传按分值加权计算的“实际正答率”。
      * 交卷自批后尽力查询本次得分并附加到结果文案。
      */
     suspend fun submitPaperAnswers(
@@ -446,6 +447,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
         val sel = mutableListOf<JsonObject>()
         val subjective = mutableListOf<Pair<QuestionItem, QuestionAnswer>>()
+        var objectiveScore = 0.0 // 客观题满分和（系统阅卷必对，全部得分）
         for (q in questions) {
             val a = answers[q.questionId] ?: continue
             val opts = a.choiceAnswers
@@ -459,6 +461,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                         put("answers", JsonArray(opts.map { JsonPrimitive(it) }))
                     },
                 )
+                objectiveScore += q.score
             } else {
                 subjective.add(q to a)
             }
@@ -469,6 +472,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         var full = 0
         var half = 0
         var miss = 0
+        var obtainedSubjective = 0.0 // 主观题实际得分（对=满分 / 半对=50% / 错=0）
         val notSel = mutableListOf<JsonObject>()
         for ((q, _) in subjective) {
             val ratio = when {
@@ -487,6 +491,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                     0.0
                 }
             }
+            obtainedSubjective += q.score * ratio
             notSel.add(
                 buildJsonObject {
                     put("questionId", q.questionId)
@@ -512,6 +517,13 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         EwtEndpoints.submitPaper(paper.paperId, reportId, EwtApi.PLATFORM, biz)
         EwtEndpoints.submitCorrected(paper.paperId, reportId, EwtApi.PLATFORM, biz)
 
+        // 实际正答率（按分值加权）：客观题满分 + 主观题实得分 / 全卷分值
+        val totalScore = questions.sumOf { it.score }
+        var actualRate: Double? = null
+        if (totalScore > 0) {
+            actualRate = (objectiveScore + obtainedSubjective) / totalScore * 100.0
+        }
+
         val scoreText = runCatching {
             val base = EwtEndpoints.getUserBaseInfo().optObj("data")
             val userId = base?.str("userId").orEmpty()
@@ -519,7 +531,8 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
             res.optObj("data")?.extractScoreText()
         }.getOrNull()
 
-        return "已提交：客观题 ${sel.size} 题（系统阅卷），主观题 对 $full / 半对 $half / 错 $miss，目标整卷正确率 $rate%" +
+        val actualText = actualRate?.let { "，实际正确率≈${formatScore(it)}%" } ?: ""
+        return "已提交：客观题 ${sel.size} 题（系统阅卷），主观题 对 $full / 半对 $half / 错 $miss（目标 $rate%）$actualText" +
             (if (scoreText != null) "，本次得分 $scoreText" else "") +
             "，并完成交卷自批"
     }
