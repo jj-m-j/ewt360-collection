@@ -119,7 +119,7 @@ fun AppRoot() {
         // 主页列表滚动位置（跨页面保留，返回不跳顶）
         val homeListState: LazyListState = rememberLazyListState()
 
-        // ── 预测式返回：手势进度驱动（参考 MIUIX NavDisplay MiuixDefault 转场） ──
+        // ── 预测式返回：手势进度驱动（参考 MIUIX NavDisplay） ──
         val backProgress = remember { Animatable(0f) }
         var showPrevLayer by remember { mutableStateOf(false) }
         var gestureCommitted by remember { mutableStateOf(false) }
@@ -134,15 +134,29 @@ fun AppRoot() {
             }
         }
 
+        /**
+         * 返回（预测式/系统键）：
+         * 顶层瞬时切到上一页后，把 backProgress 从手势位置平滑动画回 0（整屏滑回原位），
+         * 背景层保持到动画结束才清理 —— 全程连续，不再瞬移。
+         */
         fun goBack() {
             val prev = previous
-            if (prev != null) {
-                gestureCommitted = true
-                screen = prev
+            if (prev == null) {
+                scope.launch { backProgress.snapTo(0f) }
+                return
+            }
+            if (gestureCommitted) return // 动画进行中，防重入
+            gestureCommitted = true
+            screen = prev
+            showPrevLayer = true
+            scope.launch {
+                backProgress.animateTo(
+                    0f,
+                    spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                )
                 previous = null
                 showPrevLayer = false
-            } else {
-                scope.launch { backProgress.snapTo(0f) }
+                gestureCommitted = false
             }
         }
 
@@ -151,7 +165,7 @@ fun AppRoot() {
         val backCallback = remember {
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackStarted(backEvent: BackEventCompat) {
-                    if (previous != null) {
+                    if (previous != null && !gestureCommitted) {
                         showPrevLayer = true
                         gestureCommitted = false
                         scope.launch { backProgress.snapTo(backEvent.progress) }
@@ -159,16 +173,20 @@ fun AppRoot() {
                 }
 
                 override fun handleOnBackProgressed(backEvent: BackEventCompat) {
-                    scope.launch { backProgress.snapTo(backEvent.progress) }
+                    if (!gestureCommitted) {
+                        scope.launch { backProgress.snapTo(backEvent.progress) }
+                    }
                 }
 
                 override fun handleOnBackCancelled() {
-                    showPrevLayer = false
-                    scope.launch {
-                        backProgress.animateTo(
-                            0f,
-                            spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
-                        )
+                    if (!gestureCommitted) {
+                        showPrevLayer = false
+                        scope.launch {
+                            backProgress.animateTo(
+                                0f,
+                                spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                            )
+                        }
                     }
                 }
 
@@ -183,14 +201,6 @@ fun AppRoot() {
         }
         backCallback.isEnabled =
             screen !is Screen.Main && screen !is Screen.Login && screen !is Screen.Boot
-
-        // 手势完成切屏后：进度归零
-        LaunchedEffect(gestureCommitted) {
-            if (gestureCommitted) {
-                backProgress.snapTo(0f)
-                gestureCommitted = false
-            }
-        }
 
         // 启动：校验登录态
         LaunchedEffect(Unit) {
@@ -217,8 +227,9 @@ fun AppRoot() {
                         .graphicsLayer {
                             val p = backProgress.value
                             if (previous == Screen.Main) {
-                                alpha = if (showPrevLayer) 0.9f + 0.1f * p else 0f
-                                translationX = -0.25f * size.width * (if (showPrevLayer) (1f - p) else 1f)
+                                // Main 常驻背景：固定原位全不透明，避免返回动画期间位移/闪烁
+                                alpha = if (showPrevLayer) 1f else 0f
+                                translationX = 0f
                             } else {
                                 alpha = 0.9f + 0.1f * p
                                 translationX = -0.25f * size.width * (1f - p)
@@ -269,6 +280,7 @@ fun AppRoot() {
                     targetState = screen,
                     transitionSpec = {
                         when {
+                            // 手势提交后：内容已到位，瞬时切换避免二次转场
                             gestureCommitted -> fadeIn(tween(1)).togetherWith(fadeOut(tween(1)))
                             targetState is Screen.Questions ||
                                 targetState is Screen.LinkQuery ||
@@ -415,7 +427,7 @@ private fun RenderScreen(
     }
 }
 
-/** 主层：页面内容（作为液态玻璃 backdrop 源）+ 液态玻璃悬浮底栏 */
+/** 主层：页面内容（作为液态玻璃 backdrop 源）+ 液态玻璃悬浮底栏（窄胶囊，居中悬浮） */
 @Composable
 private fun MainLayer(
     userInfo: UserInfo?,
@@ -434,6 +446,8 @@ private fun MainLayer(
 ) {
     // 玻璃底栏的反射源：捕获整个 Tab 内容（列表滚动画面）
     val backdrop = rememberLayerBackdrop()
+    // 稳定引用，避免每次重组新建 lambda 导致底栏内部 LaunchedEffect 重启
+    val selectedTabIndex = remember { { tab } }
 
     Box(Modifier.fillMaxSize()) {
         AnimatedContent(
@@ -466,21 +480,19 @@ private fun MainLayer(
                 )
             }
         }
-        // 液态玻璃悬浮底栏（全宽胶囊：实时模糊 + 折射 + 可拖动内胆）
+        // 液态玻璃悬浮底栏：内容包裹窄胶囊，居中悬浮，比旧版更窄、更高
         LiquidGlassBottomBar(
             tabs = listOf(
                 LiquidGlassTab(icon = PaperTabIcon, label = "试卷"),
                 LiquidGlassTab(icon = AboutTabIcon, label = "关于"),
             ),
-            selectedTabIndex = { tab },
+            selectedTabIndex = selectedTabIndex,
             onTabSelected = onTabSelect,
             backdrop = backdrop,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(start = 24.dp, end = 24.dp)
-                .navigationBarsPadding()
-                .padding(bottom = 12.dp),
+                .padding(bottom = 20.dp)
+                .navigationBarsPadding(),
         )
     }
 }
