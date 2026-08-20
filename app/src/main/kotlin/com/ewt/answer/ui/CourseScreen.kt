@@ -1,19 +1,14 @@
 package com.ewt.answer.ui
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -53,6 +48,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun CourseScreen(
     onOpenSettings: () -> Unit = {},
+    onOpenWebViewBrush: () -> Unit = {},
 ) {
     val vm: com.ewt.answer.ui.CourseViewModel = viewModel(
         factory = com.ewt.answer.ui.CourseViewModel.Factory,
@@ -135,13 +131,14 @@ fun CourseScreen(
                 }
             }
 
-            // 操作行（刷全部，随页面滑动）
+            // 操作行（原生刷全部 + 网页刷课入口，随页面滑动）
             item(key = "course_actions") {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Button(
                         onClick = { vm.brushAll() },
@@ -150,12 +147,11 @@ fun CourseScreen(
                     ) {
                         Text(if (brushingAll) "批量刷课中…" else "刷全部未完成", fontSize = 14.sp)
                     }
-                    if (brushingAll) {
-                        Spacer(Modifier.width(10.dp))
-                        TextButton(
-                            text = "停止",
-                            onClick = { vm.stop() },
-                        )
+                    Button(
+                        onClick = onOpenWebViewBrush,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("网页刷课", fontSize = 14.sp)
                     }
                 }
             }
