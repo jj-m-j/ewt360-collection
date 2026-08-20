@@ -30,7 +30,7 @@ data class GlobalConf(
 /**
  * 视频课（刷课）API：播放上报协议。
  * 源自 ewt360-brush（spark_ewt）逆向：BFE 播放上报 + HMAC-SHA1 签名（复刻 MSTPlayer makeSecretKey）。
- * bizCode: 1013=普通视频，1014=校本视频。
+ * bizCode: 1013=普通视频（web），2013=app 端。
  */
 object CourseApi {
     const val BFE = "https://bfe.ewt360.com"
@@ -254,16 +254,21 @@ object CourseApi {
             .header("Content-Type", "application/json")
             .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
             .build()
-        runCatching {
+        try {
             client.newCall(request).execute().use { resp ->
                 val text = resp.body?.string().orEmpty()
                 val ct = resp.headers["Content-Type"] ?: ""
-                if ("text/html" in ct || !text.trim().startsWith("{")) {
+                val result = if ("text/html" in ct || !text.trim().startsWith("{")) {
                     ReportResult.WAF
                 } else {
                     if (resp.isSuccessful) ReportResult.OK else ReportResult.FAIL
                 }
+                DebugLog.d("BFE", "action=$action lesson=$lessonId http=${resp.code} ct=${ct.take(20)} result=$result body=${text.take(200)}")
+                result
             }
-        }.getOrDefault(ReportResult.FAIL)
+        } catch (e: Exception) {
+            DebugLog.e("BFE", "上报异常 action=$action lesson=$lessonId", e)
+            ReportResult.FAIL
+        }
     }
 }
