@@ -14,18 +14,13 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,31 +35,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.util.lerp
 import com.ewt.answer.data.AppContainer
 import com.ewt.answer.data.EwtRepository
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.UserInfo
+import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import com.kyant.backdrop.drawBackdrop
-import com.kyant.backdrop.effects.blur
-import com.kyant.backdrop.effects.lens
-import com.kyant.backdrop.highlight.Highlight
-import com.kyant.backdrop.shadow.InnerShadow
-import com.kyant.backdrop.shadow.Shadow
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
@@ -434,7 +419,7 @@ private fun RenderScreen(
     }
 }
 
-/** 主层：悬浮底部 Tab（试卷 / 关于），Liquid Glass 毛玻璃 + 折射 + 长按效果 */
+/** 主层：页面内容 + 悬浮液体玻璃底栏（LiquidGlassBottomBar） */
 @Composable
 private fun MainLayer(
     userInfo: UserInfo?,
@@ -451,7 +436,7 @@ private fun MainLayer(
     onOpenDebug: () -> Unit,
     onLogout: () -> Unit,
 ) {
-    // 捕获 Tab 内容（全屏，含底栏区域），供底栏模糊
+    // 捕获 Tab 内容（全屏，含底栏区域），供底栏 Backdrop 实时模糊
     val tabsBackdrop = rememberLayerBackdrop()
 
     Box(Modifier.fillMaxSize()) {
@@ -486,161 +471,13 @@ private fun MainLayer(
                 )
             }
         }
-        // 悬浮胶囊底栏（Liquid Glass：模糊 + 折射 + 高光 + 长按效果）
-        BlurredTabBar(
-            tab = tab,
-            onTabSelect = onTabSelect,
+        // 悬浮液体玻璃底栏
+        LiquidGlassBottomBar(
+            tabs = listOf("试卷", "关于"),
+            selectedIndex = tab,
+            onTabSelected = onTabSelect,
             backdrop = tabsBackdrop,
             modifier = Modifier.align(Alignment.BottomCenter),
-        )
-    }
-}
-
-/**
- * 悬浮胶囊底栏（移植 AndroidLiquidGlass LiquidBottomTabs 结构）：
- * 面板层（blur + lens 折射）→ 选中滑块（折射高光 + 阴影 + 内阴影）→ 文字内容
- * 长按：面板按压缩放 + 光斑（InteractiveHighlight）
- */
-@Composable
-private fun BlurredTabBar(
-    tab: Int,
-    onTabSelect: (Int) -> Unit,
-    backdrop: com.kyant.backdrop.backdrops.LayerBackdrop,
-    modifier: Modifier = Modifier,
-) {
-    val surfaceColor = MiuixTheme.colorScheme.surface
-    val density = LocalDensity.current
-    val radiusPx = with(density) { 14.dp.toPx() }
-    val cornerPx = with(density) { 50.dp.toPx() }
-    val isLight = !isSystemInDarkTheme()
-    val animationScope = rememberCoroutineScope()
-    val interactiveHighlight = remember(animationScope) { InteractiveHighlight(animationScope) }
-    // 滑块位置（0=试卷 1=关于）
-    val selector = remember { Animatable(0f) }
-    LaunchedEffect(tab) {
-        selector.animateTo(
-            tab.toFloat(),
-            spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMediumLow),
-        )
-    }
-
-    BoxWithConstraints(
-        modifier
-            .padding(horizontal = 24.dp, vertical = 10.dp)
-            .shadow(8.dp, RoundedCornerShape(50.dp))
-            .height(52.dp)
-            .clip(RoundedCornerShape(50.dp)),
-    ) {
-        val barWidth = maxWidth
-        val tabWidth = barWidth / 2
-
-        // ── 面板层：实时模糊 + 折射 + 半透明 Surface + 按压放大 ──
-        Box(
-            Modifier
-                .fillMaxSize()
-                .drawBackdrop(
-                    backdrop = backdrop,
-                    shape = { RoundedCornerShape(50.dp) },
-                    effects = {
-                        blur(radiusPx)
-                        lens(radiusPx, radiusPx)
-                    },
-                    layerBlock = {
-                        val p = interactiveHighlight.pressProgress
-                        val s = lerp(1f, 1.06f, p)
-                        scaleX = s
-                        scaleY = s
-                    },
-                    onDrawSurface = {
-                        drawRoundRect(
-                            color = surfaceColor.copy(alpha = 0.35f),
-                            cornerRadius = CornerRadius(cornerPx),
-                        )
-                    },
-                )
-                .then(interactiveHighlight.modifier),
-        )
-
-        // ── 选中滑块：玻璃折射 + 高光 + 阴影 + 内阴影（长按时增强） ──
-        Box(
-            Modifier
-                .fillMaxHeight()
-                .width(tabWidth)
-                .graphicsLayer {
-                    translationX = selector.value * tabWidth.toPx()
-                }
-                .drawBackdrop(
-                    backdrop = backdrop,
-                    shape = { RoundedCornerShape(50.dp) },
-                    effects = {
-                        val p = interactiveHighlight.pressProgress
-                        if (p > 0f) {
-                            lens(radiusPx * p, radiusPx * p, chromaticAberration = true)
-                        }
-                    },
-                    highlight = {
-                        Highlight.Default.copy(alpha = interactiveHighlight.pressProgress)
-                    },
-                    shadow = {
-                        Shadow(alpha = interactiveHighlight.pressProgress)
-                    },
-                    innerShadow = {
-                        InnerShadow(
-                            radius = 8.dp * interactiveHighlight.pressProgress,
-                            alpha = interactiveHighlight.pressProgress,
-                        )
-                    },
-                    onDrawSurface = {
-                        drawRoundRect(
-                            color = if (isLight) Color.Black.copy(0.06f) else Color.White.copy(0.06f),
-                            cornerRadius = CornerRadius(cornerPx),
-                        )
-                    },
-                )
-                .then(interactiveHighlight.gestureModifier),
-        )
-
-        // ── 文字内容（清晰前景） ──
-        Row(
-            Modifier
-                .fillMaxSize()
-                .padding(horizontal = 8.dp),
-        ) {
-            TabItem(
-                text = "试卷",
-                selected = tab == TAB_PAPERS,
-                onClick = { onTabSelect(TAB_PAPERS) },
-                modifier = Modifier.weight(1f),
-            )
-            TabItem(
-                text = "关于",
-                selected = tab == TAB_ABOUT,
-                onClick = { onTabSelect(TAB_ABOUT) },
-                modifier = Modifier.weight(1f),
-            )
-        }
-    }
-}
-
-@Composable
-private fun TabItem(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier
-            .fillMaxSize()
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = text,
-            fontSize = 15.sp,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            textAlign = TextAlign.Center,
         )
     }
 }
