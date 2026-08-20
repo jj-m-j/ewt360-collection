@@ -15,7 +15,6 @@ import kotlinx.serialization.json.put
  */
 class EwtRepository(private val tokenStore: SecureTokenStore) {
 
-    /** 恢复持久化 token 到内存，返回是否成功 */
     fun restoreToken(): Boolean {
         val t = tokenStore.load()
         if (t.isNullOrBlank()) return false
@@ -35,13 +34,11 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     fun hasToken(): Boolean = !EwtApi.token.isNullOrBlank()
 
-    /** 图片 URL 统一转 https（http 明文在 Android 默认被禁） */
     private fun normalizeImg(url: String): String =
         url.replace(Regex("""^http://file\.ewt360\.com/"""), "https://file.ewt360.com/")
 
     // ── 用户 / 登录态 ───────────────────────────────────────────
 
-    /** 校验登录态并获取用户信息（失败即 token 失效） */
     suspend fun fetchUserInfo(): UserInfo {
         val base = EwtEndpoints.getUserBaseInfo().optObj("data")
             ?: throw EwtException("登录已失效，请重新登录")
@@ -56,7 +53,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     // ── 作业 / 任务扫描（EWT-TOOL-main + opt.js） ────────────────
 
-    /** 获取全部作业（status 1/2/3 合并去重，按结束时间倒序） */
     suspend fun fetchHomeworks(schoolId: String): List<HomeworkItem> {
         val seen = mutableSetOf<Long>()
         val all = mutableListOf<HomeworkItem>()
@@ -84,18 +80,16 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         return all
     }
 
-    /** 日期槽：按天或按学科拉任务，附带日期时间戳用于排序 */
     private data class DaySlot(val dayId: String?, val subjectId: Int?, val date: Long)
 
     /**
      * 扫描单个作业下所有可答题任务（试卷 205 + 课后习题 204），按日期正序。
-     * 日期统计失败时回退按 12 学科扫描，日期用作业开始时间（布置日近似，不用截止日期）兜底。
+     * 日期统计失败时回退按 12 学科扫描，日期用作业开始时间（布置日近似）兜底。
      */
     suspend fun scanHomeworkPapers(schoolId: String, homework: HomeworkItem): List<Paper> {
         val papers = mutableListOf<Paper>()
         val hid = homework.homeworkId
 
-        // 1. 日期/学科统计（opt.js getStudentHomeworkDaySubjectStat：元素字段为 dateId / date）
         var dayList = mutableListOf<DaySlot>()
         try {
             val statData = EwtEndpoints.getStudentHomeworkDaySubjectStat(schoolId, hid).optObj("data")
@@ -103,7 +97,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 ?: statData?.optArr("days") ?: statData?.optArr("list")
             for (el in days ?: emptyList()) {
                 val o = el as? JsonObject ?: continue
-                // opt.js: day.dateId（日期槽 id），兼容旧的 dayId 字段
                 val dayId = o.str("dateId") ?: o.str("dayId")
                 if (dayId != null && dayId != "0") {
                     dayList.add(DaySlot(dayId, null, o.longOr("date", 0L)))
@@ -115,7 +108,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         } catch (e: Exception) {
             DebugLog.e("Scan", "日期统计失败，回退按学科", e)
         }
-        // 兜底日期：无日期槽时用作业开始时间（布置日近似；勿用截止日期 endTime）
         val fallbackDate = if (dayList.isEmpty()) {
             formatDate(homework.startTime)
         } else {
@@ -124,10 +116,8 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         if (dayList.isEmpty()) {
             dayList = (1..12).map { DaySlot(null, it, 0L) }.toMutableList()
         }
-        // 按日期正序
         dayList.sortBy { it.date }
 
-        // 2. 逐天/学科拉任务 + 查课后习题
         for (slot in dayList) {
             try {
                 val tasks = EwtEndpoints.pageHomeworkTasksOpt(schoolId, hid, slot.dayId, slot.subjectId) ?: continue
@@ -169,7 +159,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                     }
                 }
 
-                // 3. 课后习题查询
                 if (lessonIdList.isNotEmpty()) {
                     try {
                         val studyData = EwtEndpoints.queryStudentLessonStudyGuideAndPractice(
@@ -206,7 +195,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         return papers
     }
 
-    /** 扫描全部作业（带进度回调） */
     suspend fun scanAllPapers(onProgress: (String) -> Unit = {}): List<HomeworkGroup> {
         val user = fetchUserInfo()
         if (user.schoolId.isBlank()) throw EwtException("未获取到学校信息")
@@ -236,7 +224,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     // ── 试卷会话 / 题目 ─────────────────────────────────────────
 
-    /** 打开试卷：按试卷 bizCode 初始化 report（205 作业 / 204 课后习题），返回会话。 */
     suspend fun openPaper(paper: Paper): PaperSession {
         val (reportId, bizCode, count) = initReportId(paper)
         return PaperSession(
@@ -249,7 +236,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         )
     }
 
-    /** 初始化 report：优先按试卷 bizCode（204/205），失败回退 205 / 201。 */
     private suspend fun initReportId(paper: Paper): Triple<String, String, Int> {
         val extId = paper.homeworkId
         val biz = paper.bizCode
@@ -275,7 +261,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         throw EwtException("初始化答卷失败：无 reportId（已尝试 5 种方式，详见日志）")
     }
 
-    /** 提交专用 report 初始化：按试卷 bizCode（204/205），isRepeat 0→1 */
     private suspend fun initSubmitReportId(paper: Paper, biz: String): String {
         val extId = paper.homeworkId
         for (isRepeat in listOf(0, 1)) {
@@ -289,12 +274,14 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         throw EwtException("初始化提交答卷失败：无 reportId")
     }
 
-    /** 空交卷解锁：仅上报作答时长，不提交任何答案内容 */
     suspend fun unlockPaper(session: PaperSession) {
         EwtEndpoints.updateReport(session.paperId, session.reportId, session.platform, session.bizCode)
     }
 
-    /** 获取题目列表：优先题组接口，失败回退非题组接口 */
+    /** 每道题分值：score / fullScore 兜底（opt.js: score || fullScore || 0） */
+    private fun extractScore(o: JsonObject): Double =
+        o.doubleOr("score", 0.0).takeIf { it > 0 } ?: o.doubleOr("fullScore", 0.0)
+
     suspend fun fetchQuestions(session: PaperSession): List<QuestionItem> {
         return try {
             fetchGroupedQuestions(session)
@@ -329,7 +316,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                         cateId = qo.intOr("cateId", 1),
                         subjective = qo.boolOr("subjective", false),
                         groupName = groupName,
-                        score = qo.doubleOr("score", 0.0),
+                        score = extractScore(qo),
                     ),
                 )
             }
@@ -360,7 +347,7 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                     cateId = qo.intOr("cateId", 1),
                     subjective = qo.boolOr("subjective", false),
                     groupName = "",
-                    score = qo.doubleOr("score", 0.0),
+                    score = extractScore(qo),
                 ),
             )
         }
@@ -369,7 +356,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
 
     // ── 答案获取（ewt-getanwser.js + opt.js 混合题型） ───────────
 
-    /** 获取单题答案。混合题型（复合题）父题答案为空时，子题分段保存并生成汇总。 */
     suspend fun fetchAnswer(session: PaperSession, question: QuestionItem): QuestionAnswer? {
         return try {
             val data = EwtEndpoints.getQuestionAnalysis(
@@ -458,7 +444,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         val biz = paper.bizCode
         val reportId = initSubmitReportId(paper, biz)
 
-        // 1. 收集客观题（纯字母答案，系统阅卷必对）
         val sel = mutableListOf<JsonObject>()
         val subjective = mutableListOf<Pair<QuestionItem, QuestionAnswer>>()
         for (q in questions) {
@@ -479,7 +464,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
             }
         }
 
-        // 2. 需要主观题贡献的“对题当量”：目标整卷正确题数 - 客观题必对数
         val rate = targetRate.coerceIn(0, 100)
         var need = questions.size * rate / 100f - sel.size
         var full = 0
@@ -528,7 +512,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
         EwtEndpoints.submitPaper(paper.paperId, reportId, EwtApi.PLATFORM, biz)
         EwtEndpoints.submitCorrected(paper.paperId, reportId, EwtApi.PLATFORM, biz)
 
-        // 3. 交卷自批后尽力查询本次得分（字段名随接口版本变化，多候选探测；失败不影响提交结果）
         val scoreText = runCatching {
             val base = EwtEndpoints.getUserBaseInfo().optObj("data")
             val userId = base?.str("userId").orEmpty()
@@ -541,7 +524,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
             "，并完成交卷自批"
     }
 
-    /** 从报告信息中尽力提取得分文本（顶层字段 / 子对象 / 逐题求和） */
     private fun JsonObject.extractScoreText(): String? {
         val topKeys = listOf("score", "totalScore", "myScore", "answerScore", "realScore", "scoreText", "finalScore", "selfScore", "scoreDetail")
         for (k in topKeys) {
@@ -555,7 +537,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 return s
             }
         }
-        // 逐题求和：questionInfoList 每项 score / fullScore
         optArr("questionInfoList")?.let { list ->
             val items = list.mapNotNull { it as? JsonObject }
             val gained = items.sumOf { it.doubleOr("score", 0.0) }
@@ -570,7 +551,6 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
     private fun formatScore(v: Double): String =
         if (v % 1.0 == 0.0) v.toInt().toString() else String.format("%.1f", v)
 
-    /** 一键刷单卷：打开 → 题目 → 解锁 → 逐题答案 → 提交（带进度回调） */
     suspend fun brushPaper(
         paper: Paper,
         targetRate: Int = 90,
