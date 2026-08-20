@@ -34,11 +34,12 @@ data class GlobalConf(
  *
  * ⚠️ 699101「环境异常」最终修复（2026-08-20，termux 抓包 + 官方 app HookNext 抓包确认）：
  *  ① 协议改用 app 端 2013：monitor/app/collect/batch + videoBizCode=2013（官方 app 同款）
- *  ② body 身份对齐 Android：os=Android、去掉 browser/browser_ver（web 身份 Windows/Edge + Conscrypt
- *     Android 设备特征 = 身份不一致 → 699101；官方 app Conscrypt+Android 一致、termux OpenSSL+Windows 自洽）
+ *  ② body 身份完全 Android 化：os=Android、去掉 browser/browser_ver、sn=ewt_app_video_detail、
+ *     UA=okhttp/4.12.0（Conscrypt 暴露 Android 设备，web 身份/脚本 UA = 身份矛盾 → 699101；
+ *     官方 app Conscrypt + Android 身份 + okhttp UA 一致、termux OpenSSL + web 身份自洽）
  *  ③ URL query 完全对齐官方 app：TrLessonId + x-bfe-session-id(in URL) + TrVideoBizCode + TrUuId(纯8位hex)
  *     + TrFallback + TrUserId（去掉 sdkVersion/_ 参数）
- *  ④ 传输层：HTTP/1.1、Accept 头、Content-Type 纯 application/json、UA=python-httpx（诚实脚本 UA）
+ *  ④ 传输层：HTTP/1.1、Accept 头、Content-Type 纯 application/json
  */
 object CourseApi {
     const val BFE = "https://bfe.ewt360.com"
@@ -46,7 +47,8 @@ object CourseApi {
     const val VIDEO_BIZ = "2013"
     const val SCHOOL_VIDEO_BIZ = "1014"
     const val SDK_VERSION = "3.0.37"
-    const val SN = "ewt_web_video_detail"
+    // app 端 sn（web 版是 ewt_web_video_detail，与 2013 协议不匹配）
+    const val SN = "ewt_app_video_detail"
 
     private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
@@ -187,7 +189,7 @@ object CourseApi {
     /**
      * 单条播放上报。返回 OK / FAIL / WAF。
      * action: 1=play start, 2=进度上报(竞态爆发), 3=完成
-     * 走 app 端协议（2013，官方 app 同款），body 身份对齐 Android。
+     * 走 app 端协议（2013，官方 app 同款），body 身份完全 Android 化。
      */
     suspend fun reportBatch(
         conf: GlobalConf,
@@ -275,8 +277,8 @@ object CourseApi {
             .header("x-bfe-session-id", conf.sessionId)
             .header("Accept", "*/*")
             .header("Content-Type", "application/json")
-            // UA 对齐 termux 成功样本（python-httpx）：BFE 风控抓「伪装浏览器的工具」
-            .header("User-Agent", "python-httpx/0.28.1")
+            // UA 对齐官方 app 网络栈（okhttp）：Conscrypt Android 设备 + okhttp UA 身份一致
+            .header("User-Agent", "okhttp/4.12.0")
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
         try {
