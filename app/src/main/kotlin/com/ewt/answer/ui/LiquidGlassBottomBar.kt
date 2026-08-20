@@ -410,11 +410,11 @@ internal fun RowScope.LiquidGlassTabItem(
     onTabSelected: (Int) -> Unit,
     index: Int,
 ) {
-    val scale = LiquidGlassTabScale.current
+    val tabScale = LiquidGlassTabScale.current
     Column(
         Modifier
             .semantics(mergeDescendants = true) {
-                selected = selected
+                this.selected = selected
                 role = Role.Tab
                 onClick {
                     onTabSelected(index)
@@ -424,9 +424,9 @@ internal fun RowScope.LiquidGlassTabItem(
             .width(LiquidGlassTabWidth)
             .fillMaxHeight()
             .graphicsLayer {
-                val scale = scale()
-                scaleX = scale
-                scaleY = scale
+                val s = tabScale()
+                scaleX = s
+                scaleY = s
             },
         verticalArrangement = Arrangement.spacedBy(2f.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,

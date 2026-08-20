@@ -365,7 +365,7 @@ fun AppRoot() {
                                 showFontPrompt = false
                             },
                         )
-                    )
+                    }
                 }
             }
         }
