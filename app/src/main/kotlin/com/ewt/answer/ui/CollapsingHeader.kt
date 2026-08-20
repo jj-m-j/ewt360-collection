@@ -3,9 +3,12 @@ package com.ewt.answer.ui
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.getTop
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
@@ -50,8 +53,8 @@ fun rememberCollapseProgress(listState: LazyListState, collapseDistancePx: Float
  *
  * - LiquidGlass 材质与底部导航同语言：blur 10dp + surface 62%，完全保留
  * - 顶栏背景覆盖状态栏区域（Edge-to-Edge 下从屏幕顶部渲染，玻璃延伸到状态栏后面）
+ * - 读取状态栏高度：文字整体下移半个状态栏高度，使标题在状态栏下方的内容区视觉上下居中
  * - 大标题展开态左侧 16dp + 副标题下方左对齐 → 滚动时标题缩放并水平居中、副标题淡出
- * - 标题始终处于（状态栏 + 顶栏）整体垂直中心，上下等边距
  * - 右侧 actions 保留
  */
 @Composable
@@ -63,10 +66,13 @@ fun CollapsingHeaderBar(
     glassSurface: Color,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
-    // 展开态较高（含状态栏），收缩态紧凑；标题垂直居中保证上下等边距
-    val headerHeight = lerp(116.dp, 64.dp, progress)
+    // 展开/收缩高度都更大（含状态栏区域），标题在内容区垂直居中
+    val headerHeight = lerp(128.dp, 72.dp, progress)
     val titleSize = lerp(26.sp, 17.sp, progress)
     val density = LocalDensity.current
+    // 状态栏高度（px）：文字整体下移其一半，视觉上下居中于状态栏下方的内容区
+    val statusBarPx = with(density) { WindowInsets.statusBars.getTop(density) }
+    val statusBarOffset = statusBarPx / 2f
 
     BoxWithConstraints(
         modifier = Modifier
@@ -85,12 +91,11 @@ fun CollapsingHeaderBar(
         val containerW = with(density) { maxWidth.toPx() }
         val offset16Px = with(density) { 16.dp.toPx() }
         val offset8Px = with(density) { 8.dp.toPx() }
-        // 副标题与主标题间距：展开态 10dp，滚动时收缩到 0
         val gapPx = with(density) { 10.dp.toPx() }
         var titleW by remember { mutableIntStateOf(0) }
         var titleH by remember { mutableIntStateOf(0) }
 
-        // 主标题：始终垂直居中（上下等边距）；水平从左侧 16dp 平滑移到居中
+        // 主标题：垂直 = 内容区视觉居中（整体中心 + 半个状态栏偏移）；水平从左侧 16dp 平滑移到居中
         Text(
             text = title,
             fontSize = titleSize,
@@ -105,6 +110,7 @@ fun CollapsingHeaderBar(
                 }
                 .graphicsLayer {
                     translationX = -(containerW / 2f - offset16Px - titleW / 2f) * (1f - progress)
+                    translationY = statusBarOffset
                 },
         )
 
@@ -121,7 +127,7 @@ fun CollapsingHeaderBar(
                     .onSizeChanged { subW = it.width }
                     .graphicsLayer {
                         translationX = -(containerW / 2f - offset16Px - subW / 2f) * (1f - progress)
-                        translationY = titleH / 2f + gapPx * (1f - progress) - offset8Px * progress
+                        translationY = titleH / 2f + gapPx * (1f - progress) - offset8Px * progress + statusBarOffset
                         alpha = 1f - progress
                         scaleX = 1f - 0.04f * progress
                         scaleY = 1f - 0.04f * progress
@@ -129,11 +135,14 @@ fun CollapsingHeaderBar(
             )
         }
 
-        // 右侧 actions（如课程页设置图标）
+        // 右侧 actions（随状态栏偏移保持与标题同一视觉中心）
         Row(
             Modifier
                 .align(Alignment.CenterEnd)
-                .padding(end = 6.dp),
+                .padding(end = 6.dp)
+                .graphicsLayer {
+                    translationY = statusBarOffset
+                },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             actions()
