@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * 流程：打开试卷 → reportId → 题目列表（题组/非题组）
  *   → 空交卷解锁 → 并发拉取答案（信号量限流 4）→ 进度 / 失败重试
- *   → 用户确认后提交答案（选择题标准答案 + 非选择题自批）并交卷自批
+ *   → 用户输入整卷目标正确率后提交（选择题标准答案 + 非选择题自批）并交卷自批
  */
 class QuestionsViewModel(
     private val repo: EwtRepository,
@@ -141,7 +141,7 @@ class QuestionsViewModel(
     }
 
     /** 提交整卷答案（用户已确认）：选择题标准答案 + 非选择题自批 + 交卷自批 */
-    fun submitAnswers() {
+    fun submitAnswers(targetRate: Int = 100) {
         val state = _uiState.value as? UiState.Ready ?: return
         if (_submitting.value) return
         if (_answers.value.isEmpty()) return
@@ -149,7 +149,7 @@ class QuestionsViewModel(
             _submitting.value = true
             _submitResult.value = null
             try {
-                val msg = repo.submitPaperAnswers(paper, state.questions, _answers.value)
+                val msg = repo.submitPaperAnswers(paper, state.questions, _answers.value, targetRate = targetRate)
                 _submitResult.value = msg
             } catch (e: CancellationException) {
                 throw e
@@ -192,11 +192,11 @@ class QuestionsViewModel(
                             } catch (e: Exception) {
                                 failedIds.add(q.questionId)
                             }
+                            val doneCount = counter.incrementAndGet()
+                            _done.value = doneCount
+                            _answers.value = results.toMap()
+                            _failed.value = failedIds.toSet()
                         }
-                        val doneCount = counter.incrementAndGet()
-                        _done.value = doneCount
-                        _answers.value = results.toMap()
-                        _failed.value = failedIds.toSet()
                     }
                 }.forEach { it.join() }
             }

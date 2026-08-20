@@ -2,6 +2,7 @@ package com.ewt.answer.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,6 +42,7 @@ import com.ewt.answer.data.QuestionItem
 import com.ewt.answer.ui.components.AnswerDetailCard
 import com.ewt.answer.ui.components.QuestionStatusBadge
 import com.ewt.answer.ui.components.questionTypeTag
+import kotlin.random.Random
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -52,11 +55,23 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
+
+/** 解析“80-90 / 80~90”目标正确率区间；非法返回 null */
+private fun parseRateRange(input: String): IntRange? {
+    val m = Regex("""^\s*(\d{1,3})\s*[-~～至]\s*(\d{1,3})\s*$""").find(input.trim()) ?: return null
+    val a = m.groupValues[1].toIntOrNull() ?: return null
+    val b = m.groupValues[2].toIntOrNull() ?: return null
+    val lo = minOf(a, b).coerceIn(0, 100)
+    val hi = maxOf(a, b).coerceIn(0, 100)
+    if (hi <= 0) return null
+    return lo..hi
+}
 
 @Composable
 fun QuestionsScreen(
@@ -74,6 +89,8 @@ fun QuestionsScreen(
     val submitResult by vm.submitResult.collectAsState()
 
     var showSubmitDialog by remember { mutableStateOf(false) }
+    // 目标正确率区间输入（提交时弹窗），默认 80-90
+    val rateState = rememberTextFieldState(initial = "80-90")
 
     LaunchedEffect(Unit) { vm.load() }
 
@@ -187,42 +204,59 @@ fun QuestionsScreen(
         }
     }
 
-    // 提交确认对话框（等宽双按钮，确认为 MIUI 蓝）
+    // 提交确认对话框：输入整卷目标正确率区间（客观题系统阅卷必对；主观题对/半对/错自批）
     if (showSubmitDialog) {
         WindowDialog(
             show = true,
             title = "提交答案",
-            summary = "提交后试卷将标记为已交卷",
+            summary = "设置整卷目标正确率，随后交卷并自批",
             onDismissRequest = { showSubmitDialog = false },
         ) {
             Column {
                 Text(
-                    text = "将提交全部已获取的选择题标准答案；非选择题按设置的自批准确率处理，随后交卷并自批。确定继续？",
+                    text = "客观题由系统阅卷（必对）；主观题自批按 对=100% / 半对=50% / 错=0% 分配，使整卷正确率落在区间内（如 80-90）。",
                     fontSize = 13.sp,
                     color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                )
+                Spacer(Modifier.height(12.dp))
+                TextField(
+                    state = rateState,
+                    label = "目标正确率区间",
+                    useLabelAsPlaceholder = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "例如 80-90，实际整卷正确率将在区间内随机取值",
+                    fontSize = 11.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
                 Spacer(Modifier.height(14.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.End,
                 ) {
                     TextButton(
                         text = "取消",
-                        modifier = Modifier.weight(1f),
                         onClick = { showSubmitDialog = false },
                     )
+                    Spacer(Modifier.width(10.dp))
                     Button(
                         onClick = {
+                            val range = parseRateRange(rateState.text.toString())
+                            if (range == null) {
+                                submitResult
+                            }
                             showSubmitDialog = false
-                            vm.submitAnswers()
+                            val rate = if (range != null) Random.nextInt(range.first, range.last + 1) else 100
+                            vm.submitAnswers(targetRate = rate)
                         },
-                        modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(
                             color = MiuixTheme.colorScheme.primary,
                             contentColor = MiuixTheme.colorScheme.onPrimary,
                         ),
                     ) {
-                        Text("确认", fontSize = 14.sp)
+                        Text("提交", fontSize = 14.sp)
                     }
                 }
             }
@@ -243,6 +277,13 @@ private fun FetchHeaderCard(
     onRetryFailed: () -> Unit,
     onRequestSubmit: () -> Unit,
 ) {
+    // 进度平滑过渡：done 跳变不再“卡顿”，400ms 缓动跟进
+    val animatedProgress by animateFloatAsState(
+        targetValue = if (total > 0) done.toFloat() / total else 0f,
+        animationSpec = tween(400),
+        label = "fetch_progress",
+    )
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -269,7 +310,7 @@ private fun FetchHeaderCard(
             if (fetching) {
                 Spacer(Modifier.height(12.dp))
                 LinearProgressIndicator(
-                    progress = if (total > 0) done.toFloat() / total else 0f,
+                    progress = animatedProgress,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(8.dp))
