@@ -45,10 +45,16 @@ class CourseRepository {
 
     private suspend fun schoolId(): Long {
         if (cachedSchoolId > 0) return cachedSchoolId
-        val school = EwtEndpoints.getSchoolUserInfo().optObj("data")
-            ?: throw EwtException("未获取到学校信息")
-        cachedSchoolId = school.longOr("schoolId", 0L)
-        if (cachedSchoolId == 0L) throw EwtException("schoolId 为空")
+        val resp = EwtEndpoints.getSchoolUserInfo()
+        DebugLog.d("Course", "getSchoolUserInfo 响应: ${resp.toString().take(400)}")
+        val school = resp.optObj("data")
+        val raw = school?.strOr("schoolId", "")?.takeIf { it.isNotBlank() }
+            ?: school?.strOr("id", "")?.takeIf { it.isNotBlank() }
+            ?: school?.strOr("schoolId", "")
+            ?: resp.optObj("data")?.optObj("school")?.strOr("schoolId", "")
+            ?: ""
+        cachedSchoolId = raw.toLongOrNull() ?: 0L
+        if (cachedSchoolId == 0L) throw EwtException("schoolId 解析失败，原始值：'$raw'，data=${school?.toString()?.take(200)}")
         DebugLog.d("Course", "schoolId=$cachedSchoolId")
         return cachedSchoolId
     }
