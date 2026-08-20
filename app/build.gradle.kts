@@ -55,6 +55,9 @@ dependencies {
     // 图片加载
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
-    // Liquid Glass（backdrop）2.0.0 正式版：依赖 compose 1.11.0 与当前项目完全匹配
-    implementation("io.github.kyant0:backdrop:2.0.0")
+    // Liquid Glass：backdrop 已源码集成（app/src/main/kotlin/com/kyant/backdrop）
+    // shapes：lens 效果需要的圆角矩形形状（官方库）
+    implementation("io.github.kyant0:shapes:1.2.0")
+    // androidx.annotation（FloatRange/RequiresApi 等）
+    implementation("androidx.annotation:annotation:1.9.1")
 }
