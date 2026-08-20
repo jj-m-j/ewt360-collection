@@ -45,7 +45,6 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
-import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -118,7 +117,7 @@ fun CourseScreen(
                         modifier = Modifier.size(40.dp),
                     ) {
                         Icon(
-                            imageVector = MiuixIcons.Refresh,
+                            imageVector = RefreshIcon,
                             contentDescription = "刷新",
                             tint = MiuixTheme.colorScheme.primary,
                         )
