@@ -468,6 +468,7 @@ private fun FilterPopupCard(
                     PickerHeader(title = "选择日期", onBack = { pane = FilterPane.Main })
                     NumberPicker(
                         value = dateOptions.indexOf(draftDate).coerceAtLeast(0),
+                        onValueChange = { draftDate = dateOptions[it] },
                         range = 0..dateOptions.lastIndex,
                         label = { dateOptions[it] ?: "全部" },
                         modifier = Modifier.fillMaxWidth(),
@@ -506,6 +507,7 @@ private fun FilterPopupCard(
                     PickerHeader(title = "选择学科", onBack = { pane = FilterPane.Main })
                     NumberPicker(
                         value = subjectOptions.indexOf(draftSubject).coerceAtLeast(0),
+                        onValueChange = { draftSubject = subjectOptions[it] },
                         range = 0..subjectOptions.lastIndex,
                         label = { subjectOptions[it] ?: "全部" },
                         modifier = Modifier.fillMaxWidth(),
@@ -669,6 +671,7 @@ private fun BrushDateDialog(
             Spacer(Modifier.height(8.dp))
             NumberPicker(
                 value = index,
+                onValueChange = { index = it },
                 range = 0..dateOptions.lastIndex,
                 label = { dateOptions[it] },
                 modifier = Modifier.fillMaxWidth(),
