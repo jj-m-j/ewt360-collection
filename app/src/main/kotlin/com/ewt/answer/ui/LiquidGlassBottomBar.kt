@@ -95,7 +95,6 @@ fun LiquidGlassBottomBar(
             .height(56.dp)
             .clip(CircleShape)
             .onSizeChanged { barWidthPx = it.width },
-        contentAlignment = Alignment.Center,
     ) {
         // ── 1. 玻璃面板（官方效果参数，matchParentSize 精确铺满父） ──
         Box(
@@ -126,9 +125,10 @@ fun LiquidGlassBottomBar(
                 .then(highlight.modifier),
         )
 
-        // ── 2. 液态选中滑块（官方 LiquidBottomTabs 滑块：位置 Spring + 速度拉伸） ──
+        // ── 2. 液态选中滑块（对齐 CenterStart，初始位置在第一个 Tab） ──
         Box(
             Modifier
+                .align(Alignment.CenterStart)
                 .height(56.dp)
                 .width(with(density) { tabWidthPx.toDp() })
                 .graphicsLayer {
