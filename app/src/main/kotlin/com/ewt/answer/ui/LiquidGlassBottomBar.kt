@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -24,7 +24,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
@@ -37,6 +36,7 @@ import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
@@ -44,39 +44,20 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** 液体玻璃底栏参数（克制取值，避免过度效果） */
-private object GlassDefaults {
-    /** 左右留距（悬浮感） */
-    val OutsidePadding = 24.dp
-    /** 上下留距 */
-    val VerticalPadding = 10.dp
-    /** 底栏高度（对齐 miuix FloatingNavigationBar 52dp） */
-    val BarHeight = 52.dp
-    /** 胶囊圆角（miuix 风格大圆角） */
-    val CornerRadius = 50.dp
-    /** 模糊半径 dp */
-    const val BlurRadiusDp = 14f
-    /** 折射高度 dp（边缘折射范围） */
-    const val LensHeightDp = 12f
-    /** 折射强度 dp */
-    const val LensAmountDp = 10f
-    /** 玻璃 Surface 不透明度 */
-    const val SurfaceAlpha = 0.38f
-    /** 常态顶部高光强度 */
-    const val HighlightAlpha = 0.25f
-}
-
 /**
- * 液体玻璃悬浮底栏（借鉴 AndroidLiquidGlass 的 Backdrop/Lens/Highlight 原理，自行实现）：
+ * 液体玻璃悬浮底栏（按 backdrop 官方 Glass Bottom Bar 教程实现）：
  *
- * 三层结构：
- * 1. 玻璃面板：实时 Backdrop Blur + 轻微 Lens 折射（边缘采样偏移）+ 顶部高光 + 半透明 Surface
- * 2. 液态选中滑块：Spring 位置动画 + 速度驱动拉伸（移动中拉长、到位回弹）+
- *    长按时色差折射/高光/投影/内阴影增强
- * 3. 文字内容：Miuix 风格，保持清晰
+ * 效果参数对齐官方文档：
+ * - effects: vibrancy() + blur(4dp) + lens(16dp, 32dp)
+ * - shape:   CircleShape（胶囊）
+ * - onDrawSurface: 半透明白（0.5）
+ * - layerBlock: 按压缩放（backdrop 不缩放，仅内容缩放）
  *
- * 兼容性：blur（Android 12+ RenderEffect）、lens（Android 13+ RuntimeShader）
- * 低版本自动降级为半透明 Surface + 高光。
+ * 叠加液态选中滑块（catalog LiquidBottomTabs 思路）：
+ * - Spring 位置动画 + 速度驱动拉伸（移动中拉长、到位回弹）
+ * - 长按时色差折射/高光/投影/内阴影增强
+ *
+ * 兼容性：blur（Android 12+）、lens（Android 13+）自动降级为半透明 Surface。
  */
 @Composable
 fun LiquidGlassBottomBar(
@@ -88,10 +69,6 @@ fun LiquidGlassBottomBar(
 ) {
     val surfaceColor = MiuixTheme.colorScheme.surface
     val density = LocalDensity.current
-    val cornerPx = with(density) { GlassDefaults.CornerRadius.toPx() }
-    val blurPx = with(density) { GlassDefaults.BlurRadiusDp.dp.toPx() }
-    val lensHeightPx = with(density) { GlassDefaults.LensHeightDp.dp.toPx() }
-    val lensAmountPx = with(density) { GlassDefaults.LensAmountDp.dp.toPx() }
     val isLight = !isSystemInDarkTheme()
 
     val scope = rememberCoroutineScope()
@@ -109,49 +86,40 @@ fun LiquidGlassBottomBar(
     BoxWithConstraints(
         modifier
             .navigationBarsPadding()
-            .padding(
-                horizontal = GlassDefaults.OutsidePadding,
-                vertical = GlassDefaults.VerticalPadding,
-            )
-            .shadow(6.dp, RoundedCornerShape(GlassDefaults.CornerRadius), clip = false)
-            .height(GlassDefaults.BarHeight)
-            .clip(RoundedCornerShape(GlassDefaults.CornerRadius)),
+            .padding(horizontal = 20.dp, vertical = 10.dp)
+            .shadow(6.dp, CircleShape, clip = false)
+            .height(56.dp)
+            .clip(CircleShape),
     ) {
         val tabWidth = maxWidth / tabs.size
         val tabWidthPx = with(density) { tabWidth.toPx() }
 
-        // ── 1. 玻璃面板：Blur + Lens + 顶部高光 + 半透明 Surface + 长按光斑 ──
+        // ── 1. 玻璃面板（官方效果参数） ──
         Box(
             Modifier
                 .fillMaxSize()
                 .drawBackdrop(
                     backdrop = backdrop,
-                    shape = { RoundedCornerShape(GlassDefaults.CornerRadius) },
+                    shape = { CircleShape },
                     effects = {
-                        blur(blurPx)
-                        lens(lensHeightPx, lensAmountPx)
+                        vibrancy()
+                        blur(4f.dp.toPx())
+                        lens(16f.dp.toPx(), 32f.dp.toPx())
                     },
-                    highlight = {
-                        Highlight.Default.copy(alpha = GlassDefaults.HighlightAlpha)
-                    },
+                    // 按压缩放放 layerBlock：backdrop 不跟随缩放（官方 Interactive 教程）
                     layerBlock = {
-                        // 长按：轻微放大（克制）
-                        val p = highlight.pressProgress
-                        val s = lerp(1f, 1.04f, p)
-                        scaleX = s
-                        scaleY = s
+                        val progress = highlight.pressProgress
+                        val maxScale = (size.width + 16f.dp.toPx()) / size.width
+                        val scale = lerp(1f, maxScale, progress)
+                        scaleX = scale
+                        scaleY = scale
                     },
-                    onDrawSurface = {
-                        drawRoundRect(
-                            color = surfaceColor.copy(alpha = GlassDefaults.SurfaceAlpha),
-                            cornerRadius = CornerRadius(cornerPx),
-                        )
-                    },
+                    onDrawSurface = { drawRect(surfaceColor.copy(alpha = 0.5f)) },
                 )
                 .then(highlight.modifier),
         )
 
-        // ── 2. 液态选中滑块：Spring 位置 + 速度拉伸 + 折射/高光/阴影（长按增强） ──
+        // ── 2. 液态选中滑块：位置 Spring + 速度拉伸 + 折射/高光/阴影（长按增强） ──
         Box(
             Modifier
                 .fillMaxHeight()
@@ -166,11 +134,11 @@ fun LiquidGlassBottomBar(
                 }
                 .drawBackdrop(
                     backdrop = backdrop,
-                    shape = { RoundedCornerShape(GlassDefaults.CornerRadius) },
+                    shape = { CircleShape },
                     effects = {
                         val p = highlight.pressProgress
                         if (p > 0f) {
-                            lens(blurPx * p, blurPx * p, chromaticAberration = true)
+                            lens(16f.dp.toPx() * p, 32f.dp.toPx() * p, chromaticAberration = true)
                         }
                     },
                     highlight = {
@@ -186,9 +154,8 @@ fun LiquidGlassBottomBar(
                         )
                     },
                     onDrawSurface = {
-                        drawRoundRect(
-                            color = if (isLight) Color.Black.copy(0.05f) else Color.White.copy(0.06f),
-                            cornerRadius = CornerRadius(cornerPx),
+                        drawRect(
+                            if (isLight) Color.Black.copy(0.05f) else Color.White.copy(0.06f),
                         )
                     },
                 )
