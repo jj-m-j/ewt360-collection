@@ -6,7 +6,7 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -172,7 +172,7 @@ fun AppRoot() {
 
         /**
          * 返回（预测式/系统键）：
-         * 先补到“完全划出”（p=1），再以固定时长 tween 平滑滑回（无弹簧弹跳），
+         * 先补到“完全划出”（p=1），再以固定时长线性回放（无弹簧/无过冲），
          * 背景层保持到动画结束才清理 —— 渐变 + 视差，全程连续不瞬移。
          */
         fun goBack() {
@@ -190,7 +190,7 @@ fun AppRoot() {
                 showPrevLayer = true
                 backProgress.animateTo(
                     0f,
-                    tween(durationMillis = 300, easing = FastOutSlowInEasing),
+                    tween(durationMillis = 250, easing = LinearEasing),
                 )
                 previous = null
                 showPrevLayer = false
@@ -222,7 +222,7 @@ fun AppRoot() {
                         scope.launch {
                             backProgress.animateTo(
                                 0f,
-                                tween(durationMillis = 300, easing = FastOutSlowInEasing),
+                                tween(durationMillis = 250, easing = LinearEasing),
                             )
                         }
                     }
