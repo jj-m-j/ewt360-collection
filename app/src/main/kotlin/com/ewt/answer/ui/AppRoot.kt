@@ -6,14 +6,14 @@ import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,6 +49,8 @@ import com.ewt.answer.data.UserInfo
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -73,6 +76,38 @@ sealed class Screen {
 private const val TAB_PAPERS = 0
 private const val TAB_ABOUT = 1
 
+/** 弹窗底部操作栏：取消(次要) + 确认(小米蓝) 右对齐 —— 全应用统一 */
+@Composable
+internal fun DialogActions(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    confirmText: String = "确认",
+    dismissText: String = "取消",
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 14.dp),
+        horizontalArrangement = Arrangement.End,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(
+            text = dismissText,
+            onClick = onDismiss,
+        )
+        Spacer(Modifier.width(10.dp))
+        Button(
+            onClick = onConfirm,
+            colors = ButtonDefaults.buttonColors(
+                color = MiuixTheme.colorScheme.primary,
+                contentColor = MiuixTheme.colorScheme.onPrimary,
+            ),
+        ) {
+            Text(confirmText, fontSize = 14.sp)
+        }
+    }
+}
+
 @Composable
 fun AppRoot() {
     val context = LocalContext.current
@@ -84,8 +119,6 @@ fun AppRoot() {
     var fontEnabled by remember { mutableStateOf(prefs.getBoolean("font_enabled", false)) }
     var fontPrompted by remember { mutableStateOf(prefs.getBoolean("font_prompted", false)) }
     var showFontPrompt by remember { mutableStateOf(false) }
-    // 主观题准确率（0-100）
-    var accuracy by remember { mutableIntStateOf(prefs.getInt("accuracy", 100)) }
 
     // 动态加载 MiSans 字体
     var miSans by remember { mutableStateOf<FontFamily?>(null) }
@@ -137,8 +170,8 @@ fun AppRoot() {
 
         /**
          * 返回（预测式/系统键）：
-         * 顶层瞬时切到上一页后，把 backProgress 从手势位置平滑动画回 0（整屏滑回原位），
-         * 背景层保持到动画结束才清理 —— 全程连续（渐入 + 视差），不瞬移。
+         * 先补到“完全划出”（p=1），再以固定时长 tween 平滑滑回（无弹簧弹跳），
+         * 背景层保持到动画结束才清理 —— 渐变 + 视差，全程连续不瞬移。
          */
         fun goBack() {
             val prev = previous
@@ -148,12 +181,14 @@ fun AppRoot() {
             }
             if (gestureCommitted) return // 动画进行中，防重入
             gestureCommitted = true
-            screen = prev
-            showPrevLayer = true
             scope.launch {
+                // 快速滑动时手势进度可能未到 1：先补足再回放，避免中途瞬切
+                backProgress.snapTo(1f)
+                screen = prev
+                showPrevLayer = true
                 backProgress.animateTo(
                     0f,
-                    spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                    tween(durationMillis = 300, easing = FastOutSlowInEasing),
                 )
                 previous = null
                 showPrevLayer = false
@@ -169,13 +204,13 @@ fun AppRoot() {
                     if (previous != null && !gestureCommitted) {
                         showPrevLayer = true
                         gestureCommitted = false
-                        scope.launch { backProgress.snapTo(backEvent.progress) }
+                        scope.launch { backProgress.snapTo(backEvent.progress.coerceIn(0f, 1f)) }
                     }
                 }
 
                 override fun handleOnBackProgressed(backEvent: BackEventCompat) {
                     if (!gestureCommitted) {
-                        scope.launch { backProgress.snapTo(backEvent.progress) }
+                        scope.launch { backProgress.snapTo(backEvent.progress.coerceIn(0f, 1f)) }
                     }
                 }
 
@@ -185,7 +220,7 @@ fun AppRoot() {
                         scope.launch {
                             backProgress.animateTo(
                                 0f,
-                                spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+                                tween(durationMillis = 300, easing = FastOutSlowInEasing),
                             )
                         }
                     }
@@ -239,16 +274,11 @@ fun AppRoot() {
                         tab = tab,
                         onTabSelect = { tab = it },
                         repo = repo,
-                        accuracy = accuracy,
                         fontEnabled = fontEnabled,
                         onFontEnabledChange = { en ->
                             fontEnabled = en
                             prefs.edit().putBoolean("font_enabled", en).apply()
                             if (!en) MiuixFonts.clearCache(context)
-                        },
-                        onAccuracyChange = { a ->
-                            accuracy = a
-                            prefs.edit().putInt("accuracy", a).apply()
                         },
                         navigateTo = { navigateTo(it) },
                         onBack = { goBack() },
@@ -298,16 +328,11 @@ fun AppRoot() {
                         tab = tab,
                         onTabSelect = { tab = it },
                         repo = repo,
-                        accuracy = accuracy,
                         fontEnabled = fontEnabled,
                         onFontEnabledChange = { en ->
                             fontEnabled = en
                             prefs.edit().putBoolean("font_enabled", en).apply()
                             if (!en) MiuixFonts.clearCache(context)
-                        },
-                        onAccuracyChange = { a ->
-                            accuracy = a
-                            prefs.edit().putInt("accuracy", a).apply()
                         },
                         navigateTo = { navigateTo(it) },
                         onBack = { goBack() },
@@ -334,31 +359,22 @@ fun AppRoot() {
                         fontSize = 13.sp,
                         color = MiuixTheme.colorScheme.onSurfaceSecondary,
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 12.dp),
-                        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.End,
-                    ) {
-                        TextButton(
-                            text = "暂不",
-                            onClick = {
-                                prefs.edit().putBoolean("font_prompted", true).apply()
-                                showFontPrompt = false
-                            },
-                        )
-                        TextButton(
-                            text = "下载",
-                            onClick = {
-                                prefs.edit()
-                                    .putBoolean("font_prompted", true)
-                                    .putBoolean("font_enabled", true)
-                                    .apply()
-                                fontEnabled = true
-                                showFontPrompt = false
-                            },
-                        )
-                    }
+                    Spacer(Modifier.height(4.dp))
+                    DialogActions(
+                        onDismiss = {
+                            prefs.edit().putBoolean("font_prompted", true).apply()
+                            showFontPrompt = false
+                        },
+                        onConfirm = {
+                            prefs.edit()
+                                .putBoolean("font_prompted", true)
+                                .putBoolean("font_enabled", true)
+                                .apply()
+                            fontEnabled = true
+                            showFontPrompt = false
+                        },
+                        confirmText = "下载",
+                    )
                 }
             }
         }
@@ -375,10 +391,8 @@ private fun RenderScreen(
     tab: Int,
     onTabSelect: (Int) -> Unit,
     repo: EwtRepository,
-    accuracy: Int,
     fontEnabled: Boolean,
     onFontEnabledChange: (Boolean) -> Unit,
-    onAccuracyChange: (Int) -> Unit,
     navigateTo: (Screen) -> Unit,
     onBack: () -> Unit,
     onPaperOpened: (String, Int) -> Unit,
@@ -394,10 +408,8 @@ private fun RenderScreen(
             listState = listState,
             tab = tab,
             onTabSelect = onTabSelect,
-            accuracy = accuracy,
             fontEnabled = fontEnabled,
             onFontEnabledChange = onFontEnabledChange,
-            onAccuracyChange = onAccuracyChange,
             onOpenPaper = { paper -> navigateTo(Screen.Questions(paper)) },
             onOpenLinkQuery = { navigateTo(Screen.LinkQuery) },
             onOpenDebug = { navigateTo(Screen.Debug) },
@@ -429,10 +441,8 @@ private fun MainLayer(
     listState: LazyListState,
     tab: Int,
     onTabSelect: (Int) -> Unit,
-    accuracy: Int,
     fontEnabled: Boolean,
     onFontEnabledChange: (Boolean) -> Unit,
-    onAccuracyChange: (Int) -> Unit,
     onOpenPaper: (Paper) -> Unit,
     onOpenLinkQuery: () -> Unit,
     onOpenDebug: () -> Unit,
@@ -460,13 +470,10 @@ private fun MainLayer(
                     userInfo = userInfo,
                     paperCounts = paperCounts,
                     listState = listState,
-                    accuracy = accuracy,
                     onOpenPaper = onOpenPaper,
                     onOpenLinkQuery = onOpenLinkQuery,
                 )
                 else -> AboutScreen(
-                    accuracy = accuracy,
-                    onAccuracyChange = onAccuracyChange,
                     fontEnabled = fontEnabled,
                     fontMb = MiuixFonts.downloadedMb(LocalContext.current),
                     onFontEnabledChange = onFontEnabledChange,

@@ -65,8 +65,8 @@ class HomeViewModel(private val repo: EwtRepository) : ViewModel() {
         }
     }
 
-    /** 一键刷今天所有试卷（打开 → 答案 → 提交 → 交卷自批） */
-    fun brushToday(accuracy: Int, onProgress: (String) -> Unit, onDone: (String) -> Unit) {
+    /** 一键刷今天所有试卷（打开 → 答案 → 提交 → 交卷自批），按整卷目标正确率分配主观题得分 */
+    fun brushToday(targetRate: Int, onProgress: (String) -> Unit, onDone: (String) -> Unit) {
         if (_brushing.value) return
         viewModelScope.launch {
             _brushing.value = true
@@ -82,11 +82,11 @@ class HomeViewModel(private val repo: EwtRepository) : ViewModel() {
                     onDone("今天（$today）没有可刷的试卷")
                     return@launch
                 }
-                val sb = StringBuilder("今日刷卷（$today）共 ${papers.size} 张：")
+                val sb = StringBuilder("今日刷卷（$today，目标正确率 $targetRate%）共 ${papers.size} 张：")
                 papers.forEachIndexed { i, p ->
                     onProgress("刷卷 ${i + 1}/${papers.size}：${p.title}")
                     try {
-                        repo.brushPaper(p, accuracy) { onProgress("刷卷 ${i + 1}/${papers.size}：$it") }
+                        repo.brushPaper(p, targetRate) { onProgress("刷卷 ${i + 1}/${papers.size}：$it") }
                         sb.append("\n✓ ").append(p.title)
                     } catch (e: Exception) {
                         sb.append("\n✗ ").append(p.title).append("：").append(e.message)
