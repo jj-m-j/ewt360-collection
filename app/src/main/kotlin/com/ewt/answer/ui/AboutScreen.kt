@@ -51,6 +51,8 @@ fun AboutScreen(
         topBar = {
             TopAppBar(
                 title = "关于",
+                // 与内容 16dp 左对齐
+                titlePadding = 16.dp,
                 // 液态玻璃顶栏：模糊内容层（Android 12+），低版本降级为半透明底色
                 modifier = Modifier.drawBackdrop(
                     backdrop = topBarBackdrop,

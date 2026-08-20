@@ -62,7 +62,7 @@ import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
 
-/** 解析“80-90 / 80~90”目标正确率区间；非法返回 null */
+/** 解析“80-90 / 80~90 / 80至90”目标正确率区间；非法返回 null */
 private fun parseRateRange(input: String): IntRange? {
     val m = Regex("""^\s*(\d{1,3})\s*[-~～至]\s*(\d{1,3})\s*$""").find(input.trim()) ?: return null
     val a = m.groupValues[1].toIntOrNull() ?: return null
@@ -89,8 +89,9 @@ fun QuestionsScreen(
     val submitResult by vm.submitResult.collectAsState()
 
     var showSubmitDialog by remember { mutableStateOf(false) }
-    // 目标正确率区间输入（提交时弹窗），默认 80-90
-    val rateState = remember { TextFieldState("80-90") }
+    var rateError by remember { mutableStateOf<String?>(null) }
+    // 目标正确率区间输入（提交时弹窗，自定义，如 80-90 / 70-85）
+    val rateState = remember { TextFieldState() }
 
     LaunchedEffect(Unit) { vm.load() }
 
@@ -214,22 +215,22 @@ fun QuestionsScreen(
         ) {
             Column {
                 Text(
-                    text = "客观题由系统阅卷（必对）；主观题自批按 对=100% / 半对=50% / 错=0% 分配，使整卷正确率落在区间内（如 80-90）。",
+                    text = "客观题由系统阅卷（必对）；主观题自批按 对=100% / 半对=50% / 错=0% 分配，使整卷正确率落在你输入的区间内。",
                     fontSize = 13.sp,
                     color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 )
                 Spacer(Modifier.height(12.dp))
                 TextField(
                     state = rateState,
-                    label = "目标正确率区间",
+                    label = "目标正确率区间（如 80-90）",
                     useLabelAsPlaceholder = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "例如 80-90，实际整卷正确率将在区间内随机取值",
+                    text = rateError ?: "自定义区间：实际整卷正确率在输入区间内随机取值",
                     fontSize = 11.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    color = if (rateError != null) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
                 Spacer(Modifier.height(14.dp))
                 Row(
@@ -244,8 +245,13 @@ fun QuestionsScreen(
                     Button(
                         onClick = {
                             val range = parseRateRange(rateState.text.toString())
+                            if (range == null) {
+                                rateError = "区间格式不正确，请输入如 80-90"
+                                return@Button
+                            }
+                            rateError = null
                             showSubmitDialog = false
-                            val rate = if (range != null) Random.nextInt(range.first, range.last + 1) else 100
+                            val rate = Random.nextInt(range.first, range.last + 1)
                             vm.submitAnswers(targetRate = rate)
                         },
                         colors = ButtonDefaults.buttonColors(

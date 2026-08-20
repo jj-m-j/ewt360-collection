@@ -42,7 +42,6 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
-import kotlin.random.Random
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import top.yukonga.miuix.kmp.basic.Button
@@ -64,7 +63,7 @@ import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
 
-/** 解析“80-90 / 80~90”目标正确率区间；非法返回 null */
+/** 解析“80-90 / 80~90 / 80至90”目标正确率区间；非法返回 null */
 private fun parseRateRange(input: String): IntRange? {
     val m = Regex("""^\s*(\d{1,3})\s*[-~～至]\s*(\d{1,3})\s*$""").find(input.trim()) ?: return null
     val a = m.groupValues[1].toIntOrNull() ?: return null
@@ -95,9 +94,11 @@ fun HomeScreen(
     var brushConfirm by remember { mutableStateOf(false) }
     var brushProgress by remember { mutableStateOf<String?>(null) }
     var brushResult by remember { mutableStateOf<String?>(null) }
+    // 一键刷今日：功能未完工标记（点击仅提示）
+    var showNotReady by remember { mutableStateOf(false) }
 
-    // 刷今日目标正确率区间（提交前弹窗输入）
-    val brushRateState = remember { TextFieldState("80-90") }
+    // 刷今日目标正确率区间（提交前弹窗输入，自定义）
+    val brushRateState = remember { TextFieldState() }
 
     // 顶栏独立 backdrop：只捕获 Scaffold 内容区（列表），不含顶栏自身 ——
     // 若采样含顶栏的整页层，RenderNode 成环，hwui prepareTreeImpl 无限递归（原生崩溃）
@@ -125,6 +126,8 @@ fun HomeScreen(
             TopAppBar(
                 title = "试卷列表",
                 subtitle = userInfo?.realName?.let { "你好，$it" } ?: "",
+                // 与列表内容 16dp 左对齐（默认 TitlePadding 26dp 会偏右 10dp）
+                titlePadding = 16.dp,
                 // 液态玻璃顶栏：模糊内容层（Android 12+），低版本降级为半透明底色
                 modifier = Modifier.drawBackdrop(
                     backdrop = topBarBackdrop,
@@ -200,7 +203,8 @@ fun HomeScreen(
                     item(key = "brush_today") {
                         BrushTodayEntry(
                             brushing = brushing,
-                            onClick = { brushConfirm = true },
+                            // 未正式上线：点击仅提示
+                            onClick = { showNotReady = true },
                         )
                     }
                     item(key = "search") {
@@ -308,7 +312,41 @@ fun HomeScreen(
         }
     }
 
-    // 刷今日确认对话框：输入整卷目标正确率区间
+    // 一键刷今日：功能未完工提示
+    if (showNotReady) {
+        WindowDialog(
+            show = true,
+            title = "一键刷今日试卷",
+            summary = "功能未完工",
+            onDismissRequest = { showNotReady = false },
+        ) {
+            Column {
+                Text(
+                    text = "该功能尚未正式上线，暂不可用。",
+                    fontSize = 13.sp,
+                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                )
+                Spacer(Modifier.height(14.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Button(
+                        onClick = { showNotReady = false },
+                        colors = ButtonDefaults.buttonColors(
+                            color = MiuixTheme.colorScheme.primary,
+                            contentColor = MiuixTheme.colorScheme.onPrimary,
+                        ),
+                    ) {
+                        Text("知道了", fontSize = 14.sp)
+                    }
+                }
+            }
+        }
+    }
+
+    // 刷今日确认对话框（预留，功能上线后启用）
     if (brushConfirm) {
         WindowDialog(
             show = true,
@@ -325,13 +363,13 @@ fun HomeScreen(
                 Spacer(Modifier.height(12.dp))
                 TextField(
                     state = brushRateState,
-                    label = "目标正确率区间",
+                    label = "目标正确率区间（如 80-90）",
                     useLabelAsPlaceholder = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "例如 80-90，每张卷子实际正确率在区间内随机取值",
+                    text = "自定义区间，每张卷子实际正确率在区间内随机取值",
                     fontSize = 11.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
@@ -437,14 +475,14 @@ private fun BrushTodayEntry(brushing: Boolean, onClick: () -> Unit) {
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = if (brushing) "正在刷今日试卷…" else "一键刷今日试卷",
+                    text = if (brushing) "正在刷今日试卷…" else "一键刷今日试卷（未完工）",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium,
                     color = if (brushing) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.height(3.dp))
                 Text(
-                    text = "今日所有试卷：自动获取答案并提交交卷自批",
+                    text = "批量自动获取答案并提交交卷自批（暂未开放）",
                     fontSize = 12.sp,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
@@ -452,7 +490,7 @@ private fun BrushTodayEntry(brushing: Boolean, onClick: () -> Unit) {
             Icon(
                 imageVector = MiuixIcons.Basic.ArrowRight,
                 contentDescription = "刷今日试卷",
-                tint = MiuixTheme.colorScheme.primary,
+                tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
             )
         }
     }
