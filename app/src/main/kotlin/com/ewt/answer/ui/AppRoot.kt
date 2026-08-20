@@ -172,8 +172,8 @@ fun AppRoot() {
 
         /**
          * 返回（预测式/系统键）：
-         * 先补到“完全划出”（p=1），再以固定时长线性回放（无弹簧/无过冲），
-         * 背景层保持到动画结束才清理 —— 渐变 + 视差，全程连续不瞬移。
+         * 补到完全划出（p=1）后，顶层继续向右滑出并淡出，上一页从左侧原位接管
+         * （不再顶层滑回盖回，杜绝“从右边过来”与过冲/瞬移感）。
          */
         fun goBack() {
             val prev = previous
@@ -184,17 +184,18 @@ fun AppRoot() {
             if (gestureCommitted) return // 动画进行中，防重入
             gestureCommitted = true
             scope.launch {
-                // 快速滑动时手势进度可能未到 1：先补足再回放，避免中途瞬切
+                // 内容切换前先补到完全划出：切换发生在屏幕外，不产生瞬移
                 backProgress.snapTo(1f)
                 screen = prev
                 showPrevLayer = true
                 backProgress.animateTo(
-                    0f,
-                    tween(durationMillis = 250, easing = LinearEasing),
+                    1.2f,
+                    tween(durationMillis = 240, easing = LinearEasing),
                 )
                 previous = null
                 showPrevLayer = false
                 gestureCommitted = false
+                backProgress.snapTo(0f)
             }
         }
 
@@ -222,7 +223,7 @@ fun AppRoot() {
                         scope.launch {
                             backProgress.animateTo(
                                 0f,
-                                tween(durationMillis = 250, easing = LinearEasing),
+                                tween(durationMillis = 240, easing = LinearEasing),
                             )
                         }
                     }
@@ -257,15 +258,15 @@ fun AppRoot() {
 
         // ── 双层渲染：背景=上一页（手势/动画渐入），顶层=当前页（手势跟随） ──
         Box(Modifier.fillMaxSize()) {
-            // 背景层（对齐 miuix MiuixDefault covered 层：25% 视差 + alpha 0.9→1.0 渐入）
+            // 背景层（对齐 miuix MiuixDefault covered 层：25% 视差 + alpha 0.9→1.0 渐入；退出阶段保持原位）
             if (previous != null && (previous == Screen.Main || showPrevLayer)) {
                 Box(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer {
                             val p = backProgress.value
-                            alpha = if (showPrevLayer) 0.9f + 0.1f * p else 0f
-                            translationX = if (showPrevLayer) -0.25f * size.width * (1f - p) else 0f
+                            alpha = (0.9f + 0.1f * p).coerceAtMost(1f)
+                            translationX = if (p <= 1f) -0.25f * size.width * (1f - p) else 0f
                         },
                 ) {
                     RenderScreen(
@@ -288,15 +289,15 @@ fun AppRoot() {
                     )
                 }
             }
-            // 顶层：当前页（手势跟随；纯全宽滑动，对齐 miuix，无缩放）
+            // 顶层：当前页（手势跟随；退出阶段继续右滑并淡出，不盖回）
             Box(
                 Modifier
                     .fillMaxSize()
                     .graphicsLayer {
                         val p = backProgress.value
                         translationX = size.width * p
+                        alpha = if (p >= 1f) (2f - p).coerceIn(0f, 1f) else 1f
                         if (p > 0f) {
-                            // 手势期间圆角裁切（NavDisplayEffects.cornerClip 同类）
                             shape = RoundedCornerShape(28.dp.toPx() * p)
                             clip = true
                         }
@@ -306,7 +307,6 @@ fun AppRoot() {
                     targetState = screen,
                     transitionSpec = {
                         when {
-                            // 手势提交后：内容已到位，瞬时切换避免二次转场
                             gestureCommitted -> fadeIn(tween(1)).togetherWith(fadeOut(tween(1)))
                             targetState is Screen.Questions ||
                                 targetState is Screen.LinkQuery ||
