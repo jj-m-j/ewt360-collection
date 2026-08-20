@@ -36,7 +36,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ewt.answer.data.Paper
 import com.ewt.answer.data.UserInfo
-import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import kotlinx.coroutines.flow.collect
@@ -66,7 +67,6 @@ fun HomeScreen(
     accuracy: Int,
     onOpenPaper: (Paper) -> Unit,
     onOpenLinkQuery: () -> Unit,
-    backdrop: LayerBackdrop,
 ) {
     val vm: HomeViewModel = viewModel(factory = HomeViewModel.Factory)
     val uiState by vm.uiState.collectAsState()
@@ -81,7 +81,9 @@ fun HomeScreen(
     var brushProgress by remember { mutableStateOf<String?>(null) }
     var brushResult by remember { mutableStateOf<String?>(null) }
 
-    // 顶栏玻璃底色：组合上下文提前捕获（onDrawSurface 为绘制 lambda，非组合上下文）
+    // 顶栏独立 backdrop：只捕获 Scaffold 内容区（列表），不含顶栏自身 ——
+    // 若采样含顶栏的整页层，RenderNode 成环，hwui prepareTreeImpl 无限递归（原生崩溃）
+    val topBarBackdrop = rememberLayerBackdrop()
     val glassSurface = MiuixTheme.colorScheme.surface
 
     val searchState = rememberTextFieldState()
@@ -105,9 +107,9 @@ fun HomeScreen(
             TopAppBar(
                 title = "试卷列表",
                 subtitle = userInfo?.realName?.let { "你好，$it" } ?: "",
-                // 液态玻璃顶栏：真实 backdrop 模糊（Android 12+），低版本自动降级为半透明底色
+                // 液态玻璃顶栏：模糊内容层（Android 12+），低版本降级为半透明底色
                 modifier = Modifier.drawBackdrop(
-                    backdrop = backdrop,
+                    backdrop = topBarBackdrop,
                     shape = { RectangleShape },
                     effects = { blur(10f.dp.toPx()) },
                     onDrawSurface = {
@@ -119,159 +121,166 @@ fun HomeScreen(
             )
         },
     ) { padding ->
-        PullToRefresh(
-            isRefreshing = refreshing,
-            onRefresh = { vm.load(force = true) },
-            topAppBarScrollBehavior = scrollBehavior,
+        // 内容区（不含顶栏）作为顶栏模糊的捕获源
+        Box(
+            Modifier
+                .fillMaxSize()
+                .layerBackdrop(topBarBackdrop),
         ) {
-            // ── 筛选计算（Composable 上下文，勿移入 LazyColumn） ──
-            val readyGroups = (uiState as? HomeViewModel.UiState.Ready)?.groups
-            val allPapers = remember(readyGroups) { readyGroups?.flatMap { it.papers } ?: emptyList() }
-            val dates = remember(allPapers) {
-                allPapers.mapNotNull { it.date.takeIf { d -> d.isNotBlank() } }
-                    .distinct().sortedDescending()
-            }
-            val subjects = remember(allPapers) {
-                allPapers.mapNotNull { it.subjectName.takeIf { s -> s.isNotBlank() } }
-                    .distinct().sorted()
-            }
-            val filteredGroups = remember(readyGroups, dateFilter, subjectFilter) {
-                readyGroups?.mapNotNull { g ->
-                    val fp = g.papers.filter { p ->
-                        (dateFilter == null || p.date == dateFilter) &&
-                            (subjectFilter == null || p.subjectName == subjectFilter)
-                    }
-                    if (fp.isEmpty()) null else g.copy(papers = fp)
-                } ?: emptyList()
-            }
-            val searchLower = remember(searchQuery) { searchQuery.trim().lowercase() }
-            val dateGroups = remember(filteredGroups, searchLower) {
-                filteredGroups.flatMap { it.papers }
-                    .filter { p ->
-                        searchLower.isEmpty() ||
-                            p.title.lowercase().contains(searchLower) ||
-                            p.homeworkTitle.lowercase().contains(searchLower) ||
-                            p.subjectName.lowercase().contains(searchLower)
-                    }
-                    .groupBy { it.date.ifBlank { "其他" } }
-                    .toSortedMap(compareByDescending { it })
-            }
-
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    end = 16.dp,
-                    top = padding.calculateTopPadding() + 8.dp,
-                    bottom = padding.calculateBottomPadding() + 80.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+            PullToRefresh(
+                isRefreshing = refreshing,
+                onRefresh = { vm.load(force = true) },
+                topAppBarScrollBehavior = scrollBehavior,
             ) {
-                item(key = "link") {
-                    LinkQueryEntry(onClick = onOpenLinkQuery)
+                // ── 筛选计算（Composable 上下文，勿移入 LazyColumn） ──
+                val readyGroups = (uiState as? HomeViewModel.UiState.Ready)?.groups
+                val allPapers = remember(readyGroups) { readyGroups?.flatMap { it.papers } ?: emptyList() }
+                val dates = remember(allPapers) {
+                    allPapers.mapNotNull { it.date.takeIf { d -> d.isNotBlank() } }
+                        .distinct().sortedDescending()
                 }
-                item(key = "brush_today") {
-                    BrushTodayEntry(
-                        brushing = brushing,
-                        onClick = { brushConfirm = true },
-                    )
+                val subjects = remember(allPapers) {
+                    allPapers.mapNotNull { it.subjectName.takeIf { s -> s.isNotBlank() } }
+                        .distinct().sorted()
                 }
-                item(key = "search") {
-                    TextField(
-                        state = searchState,
-                        label = "搜索试卷 / 课后习题",
-                        useLabelAsPlaceholder = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                val filteredGroups = remember(readyGroups, dateFilter, subjectFilter) {
+                    readyGroups?.mapNotNull { g ->
+                        val fp = g.papers.filter { p ->
+                            (dateFilter == null || p.date == dateFilter) &&
+                                (subjectFilter == null || p.subjectName == subjectFilter)
+                        }
+                        if (fp.isEmpty()) null else g.copy(papers = fp)
+                    } ?: emptyList()
+                }
+                val searchLower = remember(searchQuery) { searchQuery.trim().lowercase() }
+                val dateGroups = remember(filteredGroups, searchLower) {
+                    filteredGroups.flatMap { it.papers }
+                        .filter { p ->
+                            searchLower.isEmpty() ||
+                                p.title.lowercase().contains(searchLower) ||
+                                p.homeworkTitle.lowercase().contains(searchLower) ||
+                                p.subjectName.lowercase().contains(searchLower)
+                        }
+                        .groupBy { it.date.ifBlank { "其他" } }
+                        .toSortedMap(compareByDescending { it })
                 }
 
-                when (val state = uiState) {
-                    HomeViewModel.UiState.Loading -> {
-                        item(key = "loading") {
-                            Box(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 72.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                CircularProgressIndicator()
-                            }
-                        }
-                        if (statusText.isNotBlank()) {
-                            item(key = "loading_text") {
-                                Text(
-                                    text = statusText,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    textAlign = TextAlign.Center,
-                                    fontSize = 12.sp,
-                                    color = MiuixTheme.colorScheme.onBackgroundVariant,
-                                )
-                            }
-                        }
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = padding.calculateTopPadding() + 8.dp,
+                        bottom = padding.calculateBottomPadding() + 80.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    item(key = "link") {
+                        LinkQueryEntry(onClick = onOpenLinkQuery)
                     }
-                    HomeViewModel.UiState.Empty -> {
-                        item(key = "empty") {
-                            EmptyHint("暂未找到可查询的任务\n请确认作业已布置试卷，或使用粘贴链接查询")
-                        }
+                    item(key = "brush_today") {
+                        BrushTodayEntry(
+                            brushing = brushing,
+                            onClick = { brushConfirm = true },
+                        )
                     }
-                    is HomeViewModel.UiState.Error -> {
-                        item(key = "error") {
-                            Column(
-                                Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 48.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                Text(
-                                    state.message,
-                                    fontSize = 14.sp,
-                                    color = MiuixTheme.colorScheme.error,
-                                )
-                                Spacer(Modifier.height(12.dp))
-                                TextButton(text = "重试", onClick = { vm.load(force = true) })
-                            }
-                        }
+                    item(key = "search") {
+                        TextField(
+                            state = searchState,
+                            label = "搜索试卷 / 课后习题",
+                            useLabelAsPlaceholder = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
-                    is HomeViewModel.UiState.Ready -> {
-                        if (dates.isNotEmpty()) {
-                            item(key = "date_filter") {
-                                FilterRow(
-                                    label = "日期",
-                                    options = dates,
-                                    selected = dateFilter,
-                                    onSelect = { vm.setDateFilter(it) },
-                                )
-                            }
-                        }
-                        if (subjects.isNotEmpty()) {
-                            item(key = "subject_filter") {
-                                FilterRow(
-                                    label = "学科",
-                                    options = subjects,
-                                    selected = subjectFilter,
-                                    onSelect = { vm.setSubjectFilter(it) },
-                                )
-                            }
-                        }
 
-                        if (dateGroups.isEmpty()) {
-                            item(key = "filtered_empty") {
-                                EmptyHint("当前筛选 / 搜索条件下没有任务")
+                    when (val state = uiState) {
+                        HomeViewModel.UiState.Loading -> {
+                            item(key = "loading") {
+                                Box(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 72.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    CircularProgressIndicator()
+                                }
                             }
-                        } else {
-                            dateGroups.forEach { (date, papers) ->
-                                item(key = "date_$date") {
-                                    SmallTitle(
-                                        text = if (date == "其他") "未分类" else date,
+                            if (statusText.isNotBlank()) {
+                                item(key = "loading_text") {
+                                    Text(
+                                        text = statusText,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textAlign = TextAlign.Center,
+                                        fontSize = 12.sp,
+                                        color = MiuixTheme.colorScheme.onBackgroundVariant,
                                     )
                                 }
-                                items(papers, key = { it.paperId }) { paper ->
-                                    PaperRow(
-                                        paper = paper,
-                                        count = paperCounts[paper.paperId],
-                                        onClick = { onOpenPaper(paper) },
+                            }
+                        }
+                        HomeViewModel.UiState.Empty -> {
+                            item(key = "empty") {
+                                EmptyHint("暂未找到可查询的任务\n请确认作业已布置试卷，或使用粘贴链接查询")
+                            }
+                        }
+                        is HomeViewModel.UiState.Error -> {
+                            item(key = "error") {
+                                Column(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 48.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Text(
+                                        state.message,
+                                        fontSize = 14.sp,
+                                        color = MiuixTheme.colorScheme.error,
                                     )
+                                    Spacer(Modifier.height(12.dp))
+                                    TextButton(text = "重试", onClick = { vm.load(force = true) })
+                                }
+                            }
+                        }
+                        is HomeViewModel.UiState.Ready -> {
+                            if (dates.isNotEmpty()) {
+                                item(key = "date_filter") {
+                                    FilterRow(
+                                        label = "日期",
+                                        options = dates,
+                                        selected = dateFilter,
+                                        onSelect = { vm.setDateFilter(it) },
+                                    )
+                                }
+                            }
+                            if (subjects.isNotEmpty()) {
+                                item(key = "subject_filter") {
+                                    FilterRow(
+                                        label = "学科",
+                                        options = subjects,
+                                        selected = subjectFilter,
+                                        onSelect = { vm.setSubjectFilter(it) },
+                                    )
+                                }
+                            }
+
+                            if (dateGroups.isEmpty()) {
+                                item(key = "filtered_empty") {
+                                    EmptyHint("当前筛选 / 搜索条件下没有任务")
+                                }
+                            } else {
+                                dateGroups.forEach { (date, papers) ->
+                                    item(key = "date_$date") {
+                                        SmallTitle(
+                                            text = if (date == "其他") "未分类" else date,
+                                        )
+                                    }
+                                    items(papers, key = { it.paperId }) { paper ->
+                                        PaperRow(
+                                            paper = paper,
+                                            count = paperCounts[paper.paperId],
+                                            onClick = { onOpenPaper(paper) },
+                                        )
+                                    }
                                 }
                             }
                         }

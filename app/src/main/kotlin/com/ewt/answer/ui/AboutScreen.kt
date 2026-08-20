@@ -1,6 +1,7 @@
 package com.ewt.answer.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -18,7 +19,8 @@ import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.kyant.backdrop.backdrops.LayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import top.yukonga.miuix.kmp.basic.Card
@@ -43,18 +45,18 @@ fun AboutScreen(
     onFontEnabledChange: (Boolean) -> Unit,
     onOpenDebug: () -> Unit,
     onLogout: () -> Unit,
-    backdrop: LayerBackdrop,
 ) {
-    // 顶栏玻璃底色：组合上下文提前捕获（onDrawSurface 为绘制 lambda，非组合上下文）
+    // 顶栏独立 backdrop：只捕获内容区（不含顶栏自身），避免 RenderNode 循环引用崩溃
+    val topBarBackdrop = rememberLayerBackdrop()
     val glassSurface = MiuixTheme.colorScheme.surface
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = "关于",
-                // 液态玻璃顶栏：真实 backdrop 模糊（Android 12+），低版本自动降级为半透明底色
+                // 液态玻璃顶栏：模糊内容层（Android 12+），低版本降级为半透明底色
                 modifier = Modifier.drawBackdrop(
-                    backdrop = backdrop,
+                    backdrop = topBarBackdrop,
                     shape = { RectangleShape },
                     effects = { blur(10f.dp.toPx()) },
                     onDrawSurface = {
@@ -65,118 +67,124 @@ fun AboutScreen(
             )
         },
     ) { padding ->
-        Column(
+        Box(
             Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .layerBackdrop(topBarBackdrop),
         ) {
-            // 版本信息
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                insideMargin = PaddingValues(16.dp),
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Column {
-                    Text(
-                        text = "EWT360 答案查询",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MiuixTheme.colorScheme.onSurface,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = "v1.0.0 · MIUIX 风格 · 答案与解析来自 EWT360 官方接口",
-                        fontSize = 12.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                }
-            }
-
-            // 设置：MiSans 字体
-            SmallTitle("设置")
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            ) {
-                Row(
+                // 版本信息
+                Card(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
+                    insideMargin = PaddingValues(16.dp),
                 ) {
-                    Column(Modifier.weight(1f)) {
+                    Column {
                         Text(
-                            text = "MiSans 字体",
-                            fontSize = 15.sp,
+                            text = "EWT360 答案查询",
+                            fontSize = 17.sp,
                             fontWeight = FontWeight.Medium,
                             color = MiuixTheme.colorScheme.onSurface,
                         )
-                        Spacer(Modifier.height(3.dp))
+                        Spacer(Modifier.height(4.dp))
                         Text(
-                            text = if (fontEnabled && fontMb.isNotBlank()) "已启用（占用 $fontMb）" else "关闭后恢复系统字体并删除已下载",
+                            text = "v1.0.0 · MIUIX 风格 · 答案与解析来自 EWT360 官方接口",
                             fontSize = 12.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
                     }
-                    Switch(
-                        checked = fontEnabled,
-                        onCheckedChange = onFontEnabledChange,
-                    )
                 }
-            }
-            // 设置：主观题准确率
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            ) {
-                Column {
+
+                // 设置：MiSans 字体
+                SmallTitle("设置")
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column(Modifier.weight(1f)) {
                             Text(
-                                text = "主观题准确率",
+                                text = "MiSans 字体",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Medium,
                                 color = MiuixTheme.colorScheme.onSurface,
                             )
                             Spacer(Modifier.height(3.dp))
                             Text(
-                                text = "客观题由系统批改；主观题按比例分配 满分 / 半对 / 错",
+                                text = if (fontEnabled && fontMb.isNotBlank()) "已启用（占用 $fontMb）" else "关闭后恢复系统字体并删除已下载",
                                 fontSize = 12.sp,
                                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                             )
                         }
-                        Text(
-                            text = "$accuracy%",
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MiuixTheme.colorScheme.primary,
+                        Switch(
+                            checked = fontEnabled,
+                            onCheckedChange = onFontEnabledChange,
                         )
                     }
-                    Slider(
-                        value = accuracy.toFloat() / 100f,
-                        onValueChange = { onAccuracyChange((it * 100).toInt().coerceIn(0, 100)) },
-                        valueRange = 0f..1f,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
                 }
+                // 设置：主观题准确率
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                ) {
+                    Column {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = "主观题准确率",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MiuixTheme.colorScheme.onSurface,
+                                )
+                                Spacer(Modifier.height(3.dp))
+                                Text(
+                                    text = "客观题由系统批改；主观题按比例分配 满分 / 半对 / 错",
+                                    fontSize = 12.sp,
+                                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                )
+                            }
+                            Text(
+                                text = "$accuracy%",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MiuixTheme.colorScheme.primary,
+                            )
+                        }
+                        Slider(
+                            value = accuracy.toFloat() / 100f,
+                            onValueChange = { onAccuracyChange((it * 100).toInt().coerceIn(0, 100)) },
+                            valueRange = 0f..1f,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+
+                // 调试模式入口
+                ActionCard(
+                    title = "调试模式",
+                    subtitle = "查看日志 / 分享日志 / 下载字体",
+                    onClick = onOpenDebug,
+                )
+
+                // 退出登录
+                ActionCard(
+                    title = "退出登录",
+                    subtitle = "清除登录状态并返回登录页",
+                    titleColor = MiuixTheme.colorScheme.error,
+                    onClick = onLogout,
+                )
             }
-
-            // 调试模式入口
-            ActionCard(
-                title = "调试模式",
-                subtitle = "查看日志 / 分享日志 / 下载字体",
-                onClick = onOpenDebug,
-            )
-
-            // 退出登录
-            ActionCard(
-                title = "退出登录",
-                subtitle = "清除登录状态并返回登录页",
-                titleColor = MiuixTheme.colorScheme.error,
-                onClick = onLogout,
-            )
         }
     }
 }
