@@ -61,7 +61,8 @@ fun CourseScreen() {
                     color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 )
             }
-            Box(Modifier.fillMaxSize()) {
+            // WebView 占满剩余区域（weight 不溢出）
+            Box(Modifier.weight(1f)) {
                 AndroidView(
                     factory = { ctx ->
                         @SuppressLint("SetJavaScriptEnabled")

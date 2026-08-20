@@ -1,9 +1,11 @@
 package com.ewt.answer.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.AccelerateEasing
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.DecelerateEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -34,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -42,6 +45,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
@@ -51,6 +55,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
@@ -61,8 +66,10 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
@@ -96,6 +103,20 @@ private val FilterListIcon: ImageVector by lazy {
     ).build()
 }
 
+/** 刷新图标（material refresh） */
+private val RefreshIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "Refresh",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f,
+    ).addPath(
+        pathData = addPathNodes("M17.65,6.35C16.2,4.9 14.21,4 12,4c-4.42,0 -7.99,3.58 -7.99,8s3.57,8 7.99,8c3.73,0 6.84,-2.55 7.73,-6h-2.08c-0.82,2.33 -3.04,4 -5.65,4 -3.31,0 -6,-2.69 -6,-6s2.69,-6 6,-6c1.66,0 3.14,0.69 4.22,1.78L13,11h7V4l-2.35,2.35z"),
+        fill = SolidColor(Color.Black),
+    ).build()
+}
+
 @Composable
 fun HomeScreen(
     userInfo: UserInfo?,
@@ -115,7 +136,6 @@ fun HomeScreen(
     val brushProgress by vm.brushProgress.collectAsState()
     val brushResult by vm.brushResult.collectAsState()
 
-    var showFilterPopup by remember { mutableStateOf(false) }
     var showBrushDialog by remember { mutableStateOf(false) }
 
     // 顶栏独立 backdrop：只捕获 Scaffold 内容区（列表），不含顶栏自身 —— 避免 RenderNode 循环引用崩溃
@@ -204,7 +224,6 @@ fun HomeScreen(
                 .fillMaxSize()
                 .layerBackdrop(topBarBackdrop),
         ) {
-            // 下拉刷新动效覆盖整个内容区（含搜索框以上），三条杠在粘贴链接上方
             PullToRefresh(
                 isRefreshing = refreshing,
                 onRefresh = { vm.load(force = true) },
@@ -220,28 +239,12 @@ fun HomeScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    // 筛选行：三条杠（粘贴链接上面，顶栏下面）
-                    item(key = "filter_row") {
-                        FilterRow(
+                    // 刷新行：顶栏下面、粘贴链接上面（刷新图标靠右）
+                    item(key = "refresh_row") {
+                        RefreshRow(
                             dateFilter = dateFilter,
                             subjectFilter = subjectFilter,
-                            showPopup = showFilterPopup,
-                            onTogglePopup = { showFilterPopup = !showFilterPopup },
-                            onPopupDismiss = { showFilterPopup = false },
-                            dates = dates,
-                            subjects = subjects,
-                            onDateSelect = {
-                                vm.setDateFilter(it)
-                                showFilterPopup = false
-                            },
-                            onSubjectSelect = {
-                                vm.setSubjectFilter(it)
-                                showFilterPopup = false
-                            },
-                            onClear = {
-                                vm.setDateFilter(null)
-                                vm.setSubjectFilter(null)
-                            },
+                            onRefresh = { vm.load(force = true) },
                         )
                     }
                     item(key = "link") {
@@ -260,6 +263,21 @@ fun HomeScreen(
                             label = "搜索试卷 / 课后习题",
                             useLabelAsPlaceholder = true,
                             modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    // 三条杠：搜索框下边靠右（弹层从按钮旁生长）
+                    item(key = "filter_row") {
+                        FilterRow(
+                            dateFilter = dateFilter,
+                            subjectFilter = subjectFilter,
+                            dates = dates,
+                            subjects = subjects,
+                            onDateSelect = { vm.setDateFilter(it) },
+                            onSubjectSelect = { vm.setSubjectFilter(it) },
+                            onClear = {
+                                vm.setDateFilter(null)
+                                vm.setSubjectFilter(null)
+                            },
                         )
                     }
 
@@ -377,25 +395,18 @@ fun HomeScreen(
     }
 }
 
-// ── 筛选行 + 锚点弹窗（三条杠旁边） ──────────────────────────────
+// ── 刷新行（顶栏下面 / 粘贴链接上面） ────────────────────────────
 
 @Composable
-private fun FilterRow(
+private fun RefreshRow(
     dateFilter: String?,
     subjectFilter: String?,
-    showPopup: Boolean,
-    onTogglePopup: () -> Unit,
-    onPopupDismiss: () -> Unit,
-    dates: List<String>,
-    subjects: List<String>,
-    onDateSelect: (String?) -> Unit,
-    onSubjectSelect: (String?) -> Unit,
-    onClear: () -> Unit,
+    onRefresh: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val conds = listOfNotNull(dateFilter, subjectFilter)
@@ -407,23 +418,76 @@ private fun FilterRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        IconButton(onClick = onRefresh) {
+            Icon(
+                imageVector = RefreshIcon,
+                contentDescription = "刷新",
+                tint = MiuixTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+// ── 三条杠 + 锚点弹层（从按钮“生长”出来） ───────────────────────
+
+@Composable
+private fun FilterRow(
+    dateFilter: String?,
+    subjectFilter: String?,
+    dates: List<String>,
+    subjects: List<String>,
+    onDateSelect: (String?) -> Unit,
+    onSubjectSelect: (String?) -> Unit,
+    onClear: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    // 阶段一：按钮 Press 反馈（极轻微压缩 0.97，极短）
+    val btnScale = remember { Animatable(1f) }
+    var popupVisible by remember { mutableStateOf(false) }
+    var popupExiting by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.End,
+    ) {
         Box {
-            IconButton(onClick = onTogglePopup) {
+            IconButton(
+                onClick = {
+                    scope.launch {
+                        btnScale.animateTo(0.97f, tween(60, easing = LinearEasing))
+                        btnScale.animateTo(1f, tween(60, easing = LinearEasing))
+                    }
+                    popupExiting = false
+                    popupVisible = true
+                },
+            ) {
                 Icon(
                     imageVector = FilterListIcon,
                     contentDescription = "筛选",
                     tint = MiuixTheme.colorScheme.primary,
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = btnScale.value
+                        scaleY = btnScale.value
+                    },
                 )
             }
-            if (showPopup) {
+            if (popupVisible) {
                 val density = LocalDensity.current
                 Popup(
                     alignment = Alignment.TopEnd,
                     offset = IntOffset(0, with(density) { 6.dp.roundToPx() }),
-                    onDismissRequest = onPopupDismiss,
+                    onDismissRequest = { if (!popupExiting) popupExiting = true },
                     properties = PopupProperties(focusable = true),
                 ) {
                     FilterPopupCard(
+                        exiting = popupExiting,
+                        onExitFinished = {
+                            popupVisible = false
+                            popupExiting = false
+                        },
                         dateFilter = dateFilter,
                         subjectFilter = subjectFilter,
                         dates = dates,
@@ -441,11 +505,20 @@ private fun FilterRow(
 private enum class FilterPane { Main, Date, Subject }
 
 /**
- * 筛选弹窗：固定高度（面板切换大小不跳变），
- * 出现动效 scale 0.9→1 + fade（弹簧），一级↔二级面板滑动切换（FastOutSlowIn 曲线）。
+ * 三条杠弹层（MIUIX 锚点生长动效）：
+ *
+ * 打开：
+ *  1. 容器从弹层右上角（三条杠所在侧）非对称展开（scaleX 0.92 / scaleY 0.88 → 1，260ms 减速曲线），
+ *     圆角从 28dp 收敛到 20dp，极小位移修正 6dp→0，alpha 同步。
+ *  2. 容器展开约 70% 后内容浮现：alpha 0→1 + 上移 6dp→0（160ms）。
+ *  关闭：内容先快速淡出（100ms），容器再向锚点收缩（200ms，加速曲线，略快于展开），自然收回。
+ *
+ * 不使用 overshoot / bounce / 果冻回弹；视觉来源始终锚定在三条杠按钮。
  */
 @Composable
 private fun FilterPopupCard(
+    exiting: Boolean,
+    onExitFinished: () -> Unit,
     dateFilter: String?,
     subjectFilter: String?,
     dates: List<String>,
@@ -462,138 +535,182 @@ private fun FilterPopupCard(
     val dateOptions = remember(dates) { listOf<String?>(null) + dates }
     val subjectOptions = remember(subjects) { listOf<String?>(null) + subjects }
 
-    // 出现动效：scale 0.9→1（弹簧）+ 淡入
-    val appearScale = remember { Animatable(0.9f) }
-    val appearAlpha = remember { Animatable(0f) }
+    // 容器展开（进入）
+    val openProgress = remember { Animatable(0f) }
+    // 内容浮现（进入，容器展开约 70% 后启动）
+    val contentProgress = remember { Animatable(0f) }
+    // 内容淡出（关闭第一步）
+    val exitContent = remember { Animatable(0f) }
+    // 容器向锚点收缩（关闭第二步）
+    val exitScale = remember { Animatable(0f) }
+
+    // 进入：容器主要尺寸展开（快速响应 → 连续展开 → 柔和减速 → 稳定停下）
     LaunchedEffect(Unit) {
-        appearScale.animateTo(1f, spring(dampingRatio = 0.85f, stiffness = 320f))
-        appearAlpha.animateTo(1f, tween(160, easing = FastOutSlowInEasing))
+        if (!exiting) {
+            openProgress.animateTo(1f, tween(260, easing = DecelerateEasing))
+        }
     }
+    // 进入：容器展开约 70% 后，内容轻柔浮现
+    LaunchedEffect(Unit) {
+        if (!exiting) {
+            delay(150)
+            contentProgress.animateTo(1f, tween(160, easing = DecelerateEasing))
+        }
+    }
+    // 关闭：内容先淡出 → 容器向锚点收缩 → 完成回调移除
+    LaunchedEffect(exiting) {
+        if (exiting) {
+            exitContent.animateTo(1f, tween(100, easing = DecelerateEasing))
+            exitScale.animateTo(1f, tween(200, easing = AccelerateEasing))
+            onExitFinished()
+        }
+    }
+
+    val open = openProgress.value
+    val close = exitScale.value
+    val contentAlpha = (contentProgress.value * (1f - exitContent.value)).coerceIn(0f, 1f)
+    // 圆角：从稍大（28dp）逐渐稳定到 20dp
+    val corner = lerp(28.dp, 20.dp, open)
 
     Card(
         modifier = Modifier
             .width(280.dp)
             .height(344.dp)
             .graphicsLayer {
-                scaleX = appearScale.value
-                scaleY = appearScale.value
-                alpha = appearAlpha.value
+                // Origin 固定在弹层右上角（靠近三条杠）：从按钮“生长”/“收回”
+                transformOrigin = TransformOrigin(1f, 0f)
+                // 非对称尺寸变化：横向起点 0.92、纵向起点 0.88
+                scaleX = (0.92f + 0.08f * open) * (1f - 0.16f * close)
+                scaleY = (0.88f + 0.12f * open) * (1f - 0.16f * close)
+                alpha = (open * (1f - close)).coerceIn(0f, 1f)
+                // 极小位移修正：展开时轻微下移归位
+                translationY = (1f - open) * 6f.dp.toPx()
             },
-        cornerRadius = 20.dp,
+        cornerRadius = corner,
         insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
     ) {
-        // 一级 ↔ 二级面板：滑动 + 淡入淡出切换
-        AnimatedContent(
-            targetState = pane,
-            transitionSpec = {
-                (slideInHorizontally(tween(240, easing = FastOutSlowInEasing)) { it / 3 } + fadeIn(tween(200)))
-                    .togetherWith(
-                        slideOutHorizontally(tween(180, easing = FastOutSlowInEasing)) { -it / 3 } + fadeOut(tween(140)),
-                    )
-            },
-            label = "filter_pane",
-        ) { p ->
-            Column(Modifier.fillMaxHeight()) {
-                when (p) {
-                    FilterPane.Main -> {
-                        Text(
-                            text = "筛选",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MiuixTheme.colorScheme.onSurface,
+        // 内容层：与容器分阶段，容器展开到约 70% 后浮现（alpha + 上移 6dp）
+        Column(
+            Modifier
+                .fillMaxHeight()
+                .graphicsLayer {
+                    alpha = contentAlpha
+                    translationY = (1f - contentAlpha) * 6f.dp.toPx()
+                },
+        ) {
+            // 一级 ↔ 二级面板：滑动 + 淡入淡出切换（FastOutSlowIn 曲线）
+            AnimatedContent(
+                targetState = pane,
+                transitionSpec = {
+                    (slideInHorizontally(tween(240, easing = FastOutSlowInEasing)) { it / 3 } + fadeIn(tween(200)))
+                        .togetherWith(
+                            slideOutHorizontally(tween(180, easing = FastOutSlowInEasing)) { -it / 3 } + fadeOut(tween(140)),
                         )
-                        Spacer(Modifier.height(8.dp))
-                        FilterOptionRow(
-                            label = "日期",
-                            value = dateFilter ?: "全部",
-                            onClick = { pane = FilterPane.Date },
-                        )
-                        FilterOptionRow(
-                            label = "学科",
-                            value = subjectFilter ?: "全部",
-                            onClick = { pane = FilterPane.Subject },
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
-                        ) {
-                            TextButton(text = "清除", onClick = onClear)
-                        }
-                    }
-                    FilterPane.Date -> {
-                        PickerHeader(title = "选择日期", onBack = { pane = FilterPane.Main })
-                        Spacer(Modifier.height(6.dp))
-                        NumberPicker(
-                            value = dateOptions.indexOf(draftDate).coerceAtLeast(0),
-                            onValueChange = { draftDate = dateOptions[it] },
-                            range = 0..dateOptions.lastIndex,
-                            label = { dateOptions[it] ?: "全部" },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            TextButton(
-                                text = "清除",
-                                onClick = {
-                                    draftDate = null
-                                    pane = FilterPane.Main
-                                },
+                },
+                label = "filter_pane",
+            ) { p ->
+                Column(Modifier.fillMaxHeight()) {
+                    when (p) {
+                        FilterPane.Main -> {
+                            Text(
+                                text = "筛选",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MiuixTheme.colorScheme.onSurface,
                             )
-                            Spacer(Modifier.width(10.dp))
-                            Button(
-                                onClick = {
-                                    onDateSelect(draftDate)
-                                    pane = FilterPane.Main
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    color = MiuixTheme.colorScheme.primary,
-                                    contentColor = MiuixTheme.colorScheme.onPrimary,
-                                ),
+                            Spacer(Modifier.height(8.dp))
+                            FilterOptionRow(
+                                label = "日期",
+                                value = dateFilter ?: "全部",
+                                onClick = { pane = FilterPane.Date },
+                            )
+                            FilterOptionRow(
+                                label = "学科",
+                                value = subjectFilter ?: "全部",
+                                onClick = { pane = FilterPane.Subject },
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
                             ) {
-                                Text("确定", fontSize = 14.sp)
+                                TextButton(text = "清除", onClick = onClear)
                             }
                         }
-                    }
-                    FilterPane.Subject -> {
-                        PickerHeader(title = "选择学科", onBack = { pane = FilterPane.Main })
-                        Spacer(Modifier.height(6.dp))
-                        NumberPicker(
-                            value = subjectOptions.indexOf(draftSubject).coerceAtLeast(0),
-                            onValueChange = { draftSubject = subjectOptions[it] },
-                            range = 0..subjectOptions.lastIndex,
-                            label = { subjectOptions[it] ?: "全部" },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            TextButton(
-                                text = "清除",
-                                onClick = {
-                                    draftSubject = null
-                                    pane = FilterPane.Main
-                                },
+                        FilterPane.Date -> {
+                            PickerHeader(title = "选择日期", onBack = { pane = FilterPane.Main })
+                            Spacer(Modifier.height(6.dp))
+                            NumberPicker(
+                                value = dateOptions.indexOf(draftDate).coerceAtLeast(0),
+                                onValueChange = { draftDate = dateOptions[it] },
+                                range = 0..dateOptions.lastIndex,
+                                label = { dateOptions[it] ?: "全部" },
+                                modifier = Modifier.fillMaxWidth(),
                             )
-                            Spacer(Modifier.width(10.dp))
-                            Button(
-                                onClick = {
-                                    onSubjectSelect(draftSubject)
-                                    pane = FilterPane.Main
-                                },
-                                colors = ButtonDefaults.buttonColors(
-                                    color = MiuixTheme.colorScheme.primary,
-                                    contentColor = MiuixTheme.colorScheme.onPrimary,
-                                ),
+                            Spacer(Modifier.weight(1f))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                Text("确定", fontSize = 14.sp)
+                                TextButton(
+                                    text = "清除",
+                                    onClick = {
+                                        draftDate = null
+                                        pane = FilterPane.Main
+                                    },
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Button(
+                                    onClick = {
+                                        onDateSelect(draftDate)
+                                        pane = FilterPane.Main
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        color = MiuixTheme.colorScheme.primary,
+                                        contentColor = MiuixTheme.colorScheme.onPrimary,
+                                    ),
+                                ) {
+                                    Text("确定", fontSize = 14.sp)
+                                }
+                            }
+                        }
+                        FilterPane.Subject -> {
+                            PickerHeader(title = "选择学科", onBack = { pane = FilterPane.Main })
+                            Spacer(Modifier.height(6.dp))
+                            NumberPicker(
+                                value = subjectOptions.indexOf(draftSubject).coerceAtLeast(0),
+                                onValueChange = { draftSubject = subjectOptions[it] },
+                                range = 0..subjectOptions.lastIndex,
+                                label = { subjectOptions[it] ?: "全部" },
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                TextButton(
+                                    text = "清除",
+                                    onClick = {
+                                        draftSubject = null
+                                        pane = FilterPane.Main
+                                    },
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Button(
+                                    onClick = {
+                                        onSubjectSelect(draftSubject)
+                                        pane = FilterPane.Main
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        color = MiuixTheme.colorScheme.primary,
+                                        contentColor = MiuixTheme.colorScheme.onPrimary,
+                                    ),
+                                ) {
+                                    Text("确定", fontSize = 14.sp)
+                                }
                             }
                         }
                     }
