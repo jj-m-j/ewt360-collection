@@ -6,10 +6,13 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
-import kotlinx.serialization.json.contentOrNull
 import kotlin.random.Random
 
 /** 视频课时（扫描结果，contentType 1=视频 / 11=校本视频） */
@@ -75,9 +78,30 @@ class CourseRepository {
         return all
     }
 
+    /** 任务列表（1..16 学科，与 spark_ewt 一致） */
+    private suspend fun pageTasks(schoolId: String, homeworkId: Long, dayId: String?, subjectId: Int?): List<JsonObject> {
+        val body = buildJsonObject {
+            put("schoolId", schoolId.toLongOrNull() ?: 0L)
+            put("homeworkId", homeworkId)
+            put("mustLearnSubjectList", JsonArray((1..16).map { JsonPrimitive(it) }))
+            put("queryMustLearn", 1)
+            put("pageIndex", 1)
+            put("pageSize", 1000)
+            if (dayId != null) put("dayId", dayId) else if (subjectId != null) put("subjectId", subjectId)
+        }
+        val data = EwtApi.postJson(
+            "${EwtApi.BASE}/api/homeworkprod/student/homework/task/pageHomeworkTasks",
+            body,
+            EwtApi.courseHeaders(),
+        )
+        return data.optObj("data")?.optArr("data")?.mapNotNull { it as? JsonObject }
+            ?: data.optArr("data")?.mapNotNull { it as? JsonObject }
+            ?: emptyList()
+    }
+
     /**
      * 扫描全部作业下的视频 / 校本课时（contentType 1/11）。
-     * 按日期统计分组拉取（与 opt.js 作业扫描同源）。
+     * 按日期统计分组拉取（与 spark_ewt list_video_tasks 同源）。
      */
     suspend fun scanVideoLessons(onProgress: (String) -> Unit = {}): List<VideoLesson> {
         val sid = schoolId()
@@ -89,12 +113,14 @@ class CourseRepository {
         homeworks.forEachIndexed { i, hw ->
             onProgress("扫描作业 ${i + 1}/${homeworks.size}：${hw.title}")
             try {
-                lessons += scanHomeworkVideoLessons(sid, hw)
-                    .filter { seen.add(it.lessonId) }
+                val ls = scanHomeworkVideoLessons(sid, hw)
+                DebugLog.d("Course", "作业 ${hw.homeworkId} 视频课时数=${ls.size}")
+                lessons += ls.filter { seen.add(it.lessonId) }
             } catch (e: Exception) {
                 DebugLog.e("Course", "作业扫描失败 hw=${hw.homeworkId}", e)
             }
         }
+        onProgress("共找到 ${lessons.size} 个视频课时")
         return lessons
     }
 
@@ -119,8 +145,7 @@ class CourseRepository {
                 val dayId = ds.str("dateId")
                 if (dayId.isNullOrBlank()) return@mapNotNull null
                 try {
-                    EwtEndpoints.pageHomeworkTasksOpt(schoolId.toString(), hid, dayId, null)
-                        ?.mapNotNull { it as? JsonObject } ?: emptyList()
+                    pageTasks(schoolId.toString(), hid, dayId, null)
                 } catch (e: Exception) {
                     DebugLog.e("Course", "任务拉取失败 day=$dayId", e)
                     emptyList()
@@ -129,13 +154,18 @@ class CourseRepository {
         } else {
             (1..16).mapNotNull { subj ->
                 try {
-                    EwtEndpoints.pageHomeworkTasksOpt(schoolId.toString(), hid, null, subj)
-                        ?.mapNotNull { it as? JsonObject } ?: emptyList()
+                    pageTasks(schoolId.toString(), hid, null, subj)
                 } catch (e: Exception) {
                     emptyList()
                 }
             }.flatten()
         }
+
+        // 日志：本作业任务 contentType 分布（排查扫描不到用）
+        val dist = tasks.groupBy { it.intOr("contentType", -1) }
+            .map { (k, v) -> "$k=${v.size}" }
+            .joinToString(", ")
+        DebugLog.d("Course", "作业 $hid 任务数=${tasks.size} contentType分布[$dist]")
 
         val seen = mutableSetOf<String>()
         for (t in tasks) {
@@ -267,7 +297,7 @@ class CourseRepository {
         var round = 0
         var pct = 0.0
         while (needed > 0L && stall < 3) {
-            if (!kotlinx.coroutines.currentCoroutineContext().isActive) return BrushResult(false, "已停止")
+            if (!currentCoroutineContext().isActive) return BrushResult(false, "已停止")
             round++
             delay((8_000 + Random.nextLong(0, 4_000)).toLong())
 
