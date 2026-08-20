@@ -26,7 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * 流程：打开试卷 → reportId → 题目列表（题组/非题组）
  *   → 空交卷解锁 → 并发拉取答案（信号量限流 4）→ 进度 / 失败重试
- *   → 用户输入整卷目标正确率后提交（选择题标准答案 + 非选择题自批）并交卷自批
+ *   → 用户确认后提交（选择题标准答案 + 非选择题满分自批）并交卷自批
  */
 class QuestionsViewModel(
     private val repo: EwtRepository,
@@ -45,26 +45,21 @@ class QuestionsViewModel(
     private val _uiState = MutableStateFlow<UiState>(UiState.Loading)
     val uiState: StateFlow<UiState> = _uiState
 
-    /** questionId → 答案 */
     private val _answers = MutableStateFlow<Map<String, QuestionAnswer>>(emptyMap())
     val answers: StateFlow<Map<String, QuestionAnswer>> = _answers
 
-    /** 获取失败的 questionId 集合 */
     private val _failed = MutableStateFlow<Set<String>>(emptySet())
     val failed: StateFlow<Set<String>> = _failed
 
     private val _fetching = MutableStateFlow(false)
     val fetching: StateFlow<Boolean> = _fetching
 
-    /** 已完成数（用于进度显示 N / total） */
     private val _done = MutableStateFlow(0)
     val done: StateFlow<Int> = _done
 
-    /** 提交中 */
     private val _submitting = MutableStateFlow(false)
     val submitting: StateFlow<Boolean> = _submitting
 
-    /** 提交结果描述 */
     private val _submitResult = MutableStateFlow<String?>(null)
     val submitResult: StateFlow<String?> = _submitResult
 
@@ -87,19 +82,16 @@ class QuestionsViewModel(
         }
     }
 
-    /** 获取全部题目答案（先空交卷解锁，并发上限 4，防限流 / ANR） */
     fun fetchAllAnswers() {
         val s = session ?: return
         val state = _uiState.value as? UiState.Ready ?: return
         if (_fetching.value) return
         viewModelScope.launch {
-            // 空交卷解锁：答案/解析接口在交卷后才返回内容
             runCatching { repo.unlockPaper(s) }
             fetchAnswersInternal(s, state.questions)
         }
     }
 
-    /** 仅重试失败的题目 */
     fun retryFailed() {
         val s = session ?: return
         val state = _uiState.value as? UiState.Ready ?: return
@@ -112,7 +104,6 @@ class QuestionsViewModel(
         }
     }
 
-    /** 重试单题 */
     fun retryOne(question: QuestionItem) {
         val s = session ?: return
         if (_fetching.value) return
@@ -140,8 +131,8 @@ class QuestionsViewModel(
         }
     }
 
-    /** 提交整卷答案（用户已确认）：选择题标准答案 + 非选择题自批 + 交卷自批 */
-    fun submitAnswers(targetRate: Int = 100) {
+    /** 提交整卷答案（用户已确认）：选择题标准答案 + 非选择题满分自批 + 交卷自批 */
+    fun submitAnswers() {
         val state = _uiState.value as? UiState.Ready ?: return
         if (_submitting.value) return
         if (_answers.value.isEmpty()) return
@@ -149,7 +140,7 @@ class QuestionsViewModel(
             _submitting.value = true
             _submitResult.value = null
             try {
-                val msg = repo.submitPaperAnswers(paper, state.questions, _answers.value, targetRate = targetRate)
+                val msg = repo.submitPaperAnswers(paper, state.questions, _answers.value)
                 _submitResult.value = msg
             } catch (e: CancellationException) {
                 throw e
@@ -161,7 +152,6 @@ class QuestionsViewModel(
         }
     }
 
-    /** 清除提交结果提示 */
     fun clearSubmitResult() {
         _submitResult.value = null
     }
