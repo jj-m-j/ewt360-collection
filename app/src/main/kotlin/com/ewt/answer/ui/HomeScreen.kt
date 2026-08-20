@@ -7,12 +7,17 @@ import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +34,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
@@ -76,6 +82,7 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.CircularProgressIndicator
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
@@ -207,7 +214,7 @@ fun HomeScreen(
                 title = "试卷列表",
                 subtitle = userInfo?.realName?.let { "你好，$it" } ?: "",
                 titlePadding = 16.dp,
-                // 液态玻璃顶栏：模糊内容层（Android 12+），低版本降级为半透明底色
+                // 液态玻璃顶栏：模糊内容层（Android 12+），低版本降级为半透明底色 —— 材质完全保留
                 modifier = Modifier.drawBackdrop(
                     backdrop = topBarBackdrop,
                     shape = { RectangleShape },
@@ -221,8 +228,7 @@ fun HomeScreen(
             )
         },
     ) { padding ->
-        // 内容区（不含顶栏）作为顶栏模糊的捕获源；padding.calculateTopPadding() 即顶栏高度，
-        // 第一个 item（刷新行）物理上位于顶栏下方正文区，绝不被顶栏遮挡
+        // 内容区（不含顶栏）作为顶栏模糊的捕获源
         Box(
             Modifier
                 .fillMaxSize()
@@ -243,36 +249,45 @@ fun HomeScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    // 信息结构：顶栏 → 刷新图标 → 搜索框 → 三条杠 → 粘贴链接 → 一键刷今日 → 列表
-                    item(key = "refresh_row") {
+                    // ── 任务工具区：全部任务 + 刷新（同一 Section Header） ──
+                    item(key = "toolbar") {
                         RefreshRow(
+                            refreshing = refreshing,
                             dateFilter = dateFilter,
                             subjectFilter = subjectFilter,
                             onRefresh = { vm.load(force = true) },
                         )
                     }
+                    // ── 搜索 / 筛选：搜索框 + 三条杠（同一行，明确归属） ──
                     item(key = "search") {
-                        TextField(
-                            state = searchState,
-                            label = "搜索试卷 / 课后习题",
-                            useLabelAsPlaceholder = true,
+                        Row(
                             modifier = Modifier.fillMaxWidth(),
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            TextField(
+                                state = searchState,
+                                label = "搜索试卷 / 课后习题",
+                                useLabelAsPlaceholder = true,
+                                modifier = Modifier.weight(1f),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            FilterRow(
+                                dateFilter = dateFilter,
+                                subjectFilter = subjectFilter,
+                                dates = dates,
+                                subjects = subjects,
+                                onDateSelect = { vm.setDateFilter(it) },
+                                onSubjectSelect = { vm.setSubjectFilter(it) },
+                                onClear = {
+                                    vm.setDateFilter(null)
+                                    vm.setSubjectFilter(null)
+                                },
+                            )
+                        }
                     }
-                    // 三条杠：搜索框下边靠右（弹层从按钮旁 Morph 生长）
-                    item(key = "filter_row") {
-                        FilterRow(
-                            dateFilter = dateFilter,
-                            subjectFilter = subjectFilter,
-                            dates = dates,
-                            subjects = subjects,
-                            onDateSelect = { vm.setDateFilter(it) },
-                            onSubjectSelect = { vm.setSubjectFilter(it) },
-                            onClear = {
-                                vm.setDateFilter(null)
-                                vm.setSubjectFilter(null)
-                            },
-                        )
+                    // ── 快捷操作区 ──
+                    item(key = "quick_title") {
+                        SmallTitle(text = "快捷操作")
                     }
                     item(key = "link") {
                         LinkQueryEntry(onClick = onOpenLinkQuery)
@@ -287,17 +302,9 @@ fun HomeScreen(
 
                     when (val state = uiState) {
                         HomeViewModel.UiState.Loading -> {
-                            // 扫描时仅显示状态文字，不显示蓝色进度环
-                            if (statusText.isNotBlank()) {
-                                item(key = "loading_text") {
-                                    Text(
-                                        text = statusText,
-                                        modifier = Modifier.fillMaxWidth(),
-                                        textAlign = TextAlign.Center,
-                                        fontSize = 12.sp,
-                                        color = MiuixTheme.colorScheme.onBackgroundVariant,
-                                    )
-                                }
+                            // 扫描状态：融入页面结构（轻量状态行，非孤立文字）
+                            item(key = "scan_status") {
+                                ScanStatusRow(statusText.ifBlank { "正在扫描作业…" })
                             }
                         }
                         HomeViewModel.UiState.Empty -> {
@@ -310,7 +317,7 @@ fun HomeScreen(
                                 Column(
                                     Modifier
                                         .fillMaxWidth()
-                                        .padding(vertical = 48.dp),
+                                        .padding(vertical = 40.dp),
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                 ) {
                                     Text(
@@ -399,14 +406,23 @@ fun HomeScreen(
     }
 }
 
-// ── 刷新行（顶栏下面 / 搜索框上面） ────────────────────────────
+// ── 任务工具区（全部任务 + 刷新） ────────────────────────────────
 
 @Composable
 private fun RefreshRow(
+    refreshing: Boolean,
     dateFilter: String?,
     subjectFilter: String?,
     onRefresh: () -> Unit,
 ) {
+    // 刷新时图标持续旋转（轻量状态反馈，不占额外空间）
+    val infinite = rememberInfiniteTransition(label = "refresh_spin")
+    val angle by infinite.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
+        label = "refresh_angle",
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -416,23 +432,27 @@ private fun RefreshRow(
         val conds = listOfNotNull(dateFilter, subjectFilter)
         Text(
             text = if (conds.isEmpty()) "全部任务" else "筛选：" + conds.joinToString(" · "),
-            fontSize = 11.sp,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            color = MiuixTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onRefresh) {
+        IconButton(onClick = onRefresh, modifier = Modifier.size(36.dp)) {
             Icon(
                 imageVector = RefreshIcon,
                 contentDescription = "刷新",
                 tint = MiuixTheme.colorScheme.primary,
+                modifier = Modifier.graphicsLayer {
+                    rotationZ = if (refreshing) angle else 0f
+                },
             )
         }
     }
 }
 
-// ── 三条杠 + 锚点弹层（Circle → Capsule → Dialog 连续 Morph） ───
+// ── 搜索 / 筛选（三条杠锚定搜索框右侧） ───────────────────────────
 
 @Composable
 private fun FilterRow(
@@ -450,57 +470,50 @@ private fun FilterRow(
     var popupVisible by remember { mutableStateOf(false) }
     var popupExiting by remember { mutableStateOf(false) }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.End,
-    ) {
-        Box {
-            IconButton(
-                onClick = {
-                    scope.launch {
-                        btnScale.animateTo(0.97f, tween(60, easing = LinearEasing))
-                        btnScale.animateTo(1f, tween(60, easing = LinearEasing))
-                    }
-                    popupExiting = false
-                    popupVisible = true
-                },
-            ) {
-                Icon(
-                    imageVector = FilterListIcon,
-                    contentDescription = "筛选",
-                    tint = MiuixTheme.colorScheme.primary,
-                    modifier = Modifier.graphicsLayer {
-                        scaleX = btnScale.value
-                        scaleY = btnScale.value
-                    },
-                )
-            }
-            if (popupVisible) {
-                val density = LocalDensity.current
-                Popup(
-                    alignment = Alignment.TopEnd,
-                    offset = IntOffset(0, with(density) { 6.dp.roundToPx() }),
-                    onDismissRequest = { if (!popupExiting) popupExiting = true },
-                    properties = PopupProperties(focusable = true),
-                ) {
-                    FilterPopupCard(
-                        exiting = popupExiting,
-                        onExitFinished = {
-                            popupVisible = false
-                            popupExiting = false
-                        },
-                        dateFilter = dateFilter,
-                        subjectFilter = subjectFilter,
-                        dates = dates,
-                        subjects = subjects,
-                        onDateSelect = onDateSelect,
-                        onSubjectSelect = onSubjectSelect,
-                        onClear = onClear,
-                    )
+    Box {
+        IconButton(
+            onClick = {
+                scope.launch {
+                    btnScale.animateTo(0.97f, tween(60, easing = LinearEasing))
+                    btnScale.animateTo(1f, tween(60, easing = LinearEasing))
                 }
+                popupExiting = false
+                popupVisible = true
+            },
+            modifier = Modifier.size(36.dp),
+        ) {
+            Icon(
+                imageVector = FilterListIcon,
+                contentDescription = "筛选",
+                tint = MiuixTheme.colorScheme.primary,
+                modifier = Modifier.graphicsLayer {
+                    scaleX = btnScale.value
+                    scaleY = btnScale.value
+                },
+            )
+        }
+        if (popupVisible) {
+            val density = LocalDensity.current
+            Popup(
+                alignment = Alignment.TopEnd,
+                offset = IntOffset(0, with(density) { 6.dp.roundToPx() }),
+                onDismissRequest = { if (!popupExiting) popupExiting = true },
+                properties = PopupProperties(focusable = true),
+            ) {
+                FilterPopupCard(
+                    exiting = popupExiting,
+                    onExitFinished = {
+                        popupVisible = false
+                        popupExiting = false
+                    },
+                    dateFilter = dateFilter,
+                    subjectFilter = subjectFilter,
+                    dates = dates,
+                    subjects = subjects,
+                    onDateSelect = onDateSelect,
+                    onSubjectSelect = onSubjectSelect,
+                    onClear = onClear,
+                )
             }
         }
     }
@@ -510,16 +523,8 @@ private enum class FilterPane { Main, Date, Subject }
 
 /**
  * 三条杠弹层 —— Circle → Capsule → Dialog 连续 Morph：
- *
- * 打开：
- *  1. 按钮点击处出现一个小圆（48dp、正圆 24dp 圆角）
- *  2. 同一个 Surface 连续延展：宽度/高度同时增长（48→280 / 48→344），
- *     圆角 24→20 连续变化 → 圆 → 胶囊 → 圆角对话框，全程 Morph，非两个 View 切换
- *  3. 曲线 CubicBezier(0.2, 0, 0, 1)：起步迅速 → 中段持续展开 → 尾部柔和减速
- *  4. 内容在容器展开约 75% 后浮现（alpha + 上移 6dp）
- *  关闭：内容先快速消失 → 同一个 Surface 反向 Morph 收回小圆（略快），回到按钮附近
- *
- * Alpha 仅轻微辅助（0.75→1）；TransformOrigin 固定在右上角（按钮侧），视觉来源始终是三条杠。
+ * 打开：小圆 → 胶囊 → 对话框（同 Surface 尺寸+圆角连续变化，CubicBezier(0.2,0,0,1)），内容 75% 后浮现。
+ * 关闭：内容先退场 → 反向 Morph 收回小圆（略快）。
  */
 @Composable
 private fun FilterPopupCard(
@@ -573,7 +578,7 @@ private fun FilterPopupCard(
     }
 
     val p = morph.value
-    // 尺寸连续变化：小圆(48×48) → 对话框(280×344)；圆角：24 → 20（始终 ≤ 宽/2，保持胶囊→圆角矩形）
+    // 尺寸连续变化：小圆(48×48) → 对话框(280×344)；圆角：24 → 20
     val w = lerp(48.dp, 280.dp, p)
     val h = lerp(48.dp, 344.dp, p)
     val corner = lerp(24.dp, 20.dp, p)
@@ -781,16 +786,16 @@ private fun FilterOptionRow(label: String, value: String, onClick: () -> Unit) {
     }
 }
 
-// ── 一键刷今日 ──────────────────────────────────────────────────
+// ── 快捷操作 ──────────────────────────────────────────────────
 
-/** 一键刷今日入口卡片 */
+/** 一键刷今日入口卡片（紧凑） */
 @Composable
 private fun BrushTodayEntry(brushing: Boolean, progress: String, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp),
-        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 13.dp),
+            .padding(vertical = 2.dp),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
         onClick = onClick,
     ) {
         Row(
@@ -804,18 +809,16 @@ private fun BrushTodayEntry(brushing: Boolean, progress: String, onClick: () -> 
                     fontWeight = FontWeight.Medium,
                     color = if (brushing) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
                 )
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    text = when {
-                        brushing && progress.isNotBlank() -> progress
-                        brushing -> "正在初始化…"
-                        else -> "选择日期，批量获取答案并提交交卷自批"
-                    },
-                    fontSize = 12.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (brushing && progress.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = progress,
+                        fontSize = 11.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
             Icon(
                 imageVector = MiuixIcons.Basic.ArrowRight,
@@ -823,6 +826,63 @@ private fun BrushTodayEntry(brushing: Boolean, progress: String, onClick: () -> 
                 tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
             )
         }
+    }
+}
+
+/** 粘贴链接查询入口卡片（紧凑） */
+@Composable
+private fun LinkQueryEntry(onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
+        onClick = onClick,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = "粘贴链接查询",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+            }
+            Icon(
+                imageVector = MiuixIcons.Basic.ArrowRight,
+                contentDescription = "粘贴链接查询",
+                tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+            )
+        }
+    }
+}
+
+/** 扫描状态行（融入页面结构） */
+@Composable
+private fun ScanStatusRow(text: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier
+                .size(6.dp)
+                .clip(CircleShape)
+                .background(MiuixTheme.colorScheme.primary),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = text,
+            fontSize = 12.sp,
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -889,7 +949,7 @@ private fun PaperRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 3.dp),
-        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 13.dp),
         onClick = onClick,
     ) {
         Row(
@@ -905,7 +965,7 @@ private fun PaperRow(
                     overflow = TextOverflow.Ellipsis,
                     color = MiuixTheme.colorScheme.onSurface,
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(3.dp))
                 // 课程信息（作业名） · 学科 · 题数
                 val countText = count?.takeIf { it > 0 }?.let { "共 $it 题" }
                     ?: paper.questionCount.takeIf { it != "?" }?.let { "共 $it 题" }
@@ -935,49 +995,12 @@ private fun PaperRow(
     }
 }
 
-/** 粘贴链接查询入口卡片：点击进入链接查询页 */
-@Composable
-private fun LinkQueryEntry(onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
-        onClick = onClick,
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = "粘贴链接查询",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface,
-                )
-                Spacer(Modifier.height(3.dp))
-                Text(
-                    text = "输入 EWT360 试题链接（试卷 / 课后习题均可），直接查询",
-                    fontSize = 12.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-            }
-            Icon(
-                imageVector = MiuixIcons.Basic.ArrowRight,
-                contentDescription = "粘贴链接查询",
-                tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
-            )
-        }
-    }
-}
-
 @Composable
 private fun EmptyHint(message: String) {
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(vertical = 80.dp),
+            .padding(vertical = 60.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
