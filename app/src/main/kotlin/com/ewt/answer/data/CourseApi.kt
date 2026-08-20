@@ -37,7 +37,7 @@ data class GlobalConf(
  *  ① 上报 body 字段与 ewt_brush_v2 逐字段对齐：action=1 speed=1、begin_time 按 action 区分、
  *     action=3 收尾、Edge UA（termux 实测 burst=1/12 不触发）。
  *  ② 传输层对齐 httpx（termux 成功样本）：禁用 HTTP/2（OkHttp 默认协商 h2，httpx 默认 h1.1）+
- *     Accept: */* + Content-Type 纯 application/json。web 协议(1013)+OkHttp(h2/Conscrypt) 组合
+ *     Accept 头对齐、Content-Type 纯 application/json。web 协议(1013)+OkHttp(h2/Conscrypt) 组合
  *     被 BFE 识别为移动端辅助工具 → 699101；h1.1 特征与 httpx 一致。
  */
 object CourseApi {
