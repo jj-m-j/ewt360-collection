@@ -49,6 +49,7 @@ class CourseRepository {
             ?: throw EwtException("未获取到学校信息")
         cachedSchoolId = school.longOr("schoolId", 0L)
         if (cachedSchoolId == 0L) throw EwtException("schoolId 为空")
+        DebugLog.d("Course", "schoolId=$cachedSchoolId")
         return cachedSchoolId
     }
 
@@ -77,6 +78,7 @@ class CourseRepository {
             }
         }
         all.sortByDescending { if (it.endTime != 0L) it.endTime else it.startTime }
+        DebugLog.d("Course", "作业列表共 ${all.size} 个")
         return all
     }
 
@@ -106,10 +108,14 @@ class CourseRepository {
      * 按日期统计分组拉取（与 spark_ewt list_video_tasks 同源）。
      */
     suspend fun scanVideoLessons(onProgress: (String) -> Unit = {}): List<VideoLesson> {
+        DebugLog.d("Course", "scanVideoLessons 开始")
         val sid = schoolId()
         onProgress("正在获取作业列表…")
         val homeworks = fetchHomeworks(sid)
-        if (homeworks.isEmpty()) return emptyList()
+        if (homeworks.isEmpty()) {
+            DebugLog.d("Course", "作业列表为空，直接返回")
+            return emptyList()
+        }
         val lessons = mutableListOf<VideoLesson>()
         val seen = mutableSetOf<String>()
         homeworks.forEachIndexed { i, hw ->
@@ -123,6 +129,7 @@ class CourseRepository {
             }
         }
         onProgress("共找到 ${lessons.size} 个视频课时")
+        DebugLog.d("Course", "共找到 ${lessons.size} 个视频课时")
         return lessons
     }
 
@@ -138,6 +145,7 @@ class CourseRepository {
                 ?: statData?.optArr("list") ?: emptyList())
                 .mapNotNull { it as? JsonObject }
                 .filter { !it.str("dateId").isNullOrBlank() }
+            DebugLog.d("Course", "作业 $hid 日期分组数=${dateStat.size}")
         } catch (e: Exception) {
             DebugLog.e("Course", "日期统计失败 hw=$hid", e)
         }
