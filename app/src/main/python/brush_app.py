@@ -92,7 +92,7 @@ def run_brush(log_path, account, password, hw_filter="", concurrency=6, qps=150.
         return 1
 
 
-def run_brush_token(log_path, token, account="", password="", hw_filter="", concurrency=6, qps=150.0, dry_run=False, burst_size=8):
+def run_brush_token(log_path, token, account="", password="", hw_filter="", lesson_filter="", concurrency=6, qps=150.0, dry_run=False, burst_size=8):
     """直接用主 App 已登录的 token 刷课（账号密码可空，仅 token 失效续期时用）。"""
     b = _prepare(log_path)
     try:
@@ -111,6 +111,7 @@ def run_brush_token(log_path, token, account="", password="", hw_filter="", conc
         code = asyncio.run(b.run_brush_all(
             token, account, password,
             hw_filter=hw_filter or None,
+            lesson_filter=lesson_filter or None,
             concurrency=int(concurrency),
             qps=float(qps),
             dry_run=bool(dry_run),
