@@ -57,7 +57,6 @@ def _prepare(log_path):
 def do_login(log_path, account, password):
     b = _prepare(log_path)
     try:
-        # login 是 async 函数，必须用 asyncio.run 包裹
         token = asyncio.run(b.login(account, password))
         print("✓ 登录成功: %s…%s" % (token[:16], token[-8:]))
         return 0
@@ -72,7 +71,6 @@ def run_brush(log_path, account, password, hw_filter="", concurrency=6, qps=150.
         token = b.load_token_file()
         if not token:
             print("未找到已保存 token，正在登录…")
-            # login 是 async 函数，必须用 asyncio.run 包裹
             token = asyncio.run(b.login(account, password))
             print("✓ 登录成功: %s…%s" % (token[:16], token[-8:]))
         else:
@@ -122,3 +120,22 @@ def run_brush_token(log_path, token, account="", password="", hw_filter="", less
         import traceback
         traceback.print_exc()
         return 1
+
+
+def scan_tasks(log_path, token):
+    """扫描全部未完成课时，返回 JSON 数组（App 展示未刷课程列表用）。"""
+    b = _prepare(log_path)
+    try:
+        token = (token or "").strip()
+        if not token:
+            return "[]"
+        token_file = os.environ.get("EWT_TOKEN_FILE", "")
+        if token_file:
+            try:
+                with open(token_file, "w") as f:
+                    f.write(token)
+            except Exception:
+                pass
+        return asyncio.run(b._scan_tasks_json(token))
+    except Exception:
+        return "[]"
