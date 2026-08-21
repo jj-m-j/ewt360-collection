@@ -2,6 +2,10 @@ package com.ewt.answer.ui
 
 import android.os.Handler
 import android.os.Looper
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -21,7 +25,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -34,27 +37,48 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.chaquo.python.Python
 import com.ewt.answer.data.AppContainer
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.io.File
 import java.io.RandomAccessFile
 import kotlin.concurrent.thread
 
+/** 未刷课时条目 */
+data class BrushTask(
+    val homeworkId: String,
+    val lessonId: String,
+    val title: String,
+    val subject: String,
+    val duration: Int,
+)
+
+/** 日志菜单项 */
+private enum class LogAction { Detail, Clear }
+
 /**
  * 课程页：Python 刷课（Chaquopy 内嵌 ewt_brush_v2）。
- * 自动读取主 App 已登录 token（无需账号密码）；开始刷课后可暂停；日志固定框内滚动。
+ * 自动读取主 App 已登录 token；可扫描未刷课程并点击单个刷取；开始/暂停；日志固定框内滚动。
  */
 @Composable
 fun CourseBrushScreen(
@@ -65,17 +89,16 @@ fun CourseBrushScreen(
     val listState = rememberLazyListState()
     val logScroll = rememberScrollState()
 
-    val hwState = rememberTextFieldState()
-    val accountState = rememberTextFieldState()
-    val passwordState = rememberTextFieldState()
-
     var logText by remember { mutableStateOf("") }
     var running by remember { mutableStateOf(false) }
     var paused by remember { mutableStateOf(false) }
     var dryRun by remember { mutableStateOf(false) }
     var showDetail by remember { mutableStateOf(false) }
+    var showLogMenu by remember { mutableStateOf(false) }
+    var tasks by remember { mutableStateOf<List<BrushTask>?>(null) }
+    var scanning by remember { mutableStateOf(false) }
+    var selectedLesson by remember { mutableStateOf<String?>(null) }
     val pauseFile = remember { File(context.filesDir, "pause.flag") }
-    val runThread = remember { mutableStateOf<Thread?>(null) }
 
     // 自动获取主 App 已登录 token（不显示明文）
     val hasToken = remember { !AppContainer.tokenStore.load().isNullOrBlank() }
@@ -114,49 +137,63 @@ fun CourseBrushScreen(
         logScroll.scrollTo(logScroll.maxValue)
     }
 
-    fun runBrush() {
+    fun runPy(fn: String, task: BrushTask? = null) {
         if (running) return
-        val hw = hwState.text.toString().trim()
-        val account = accountState.text.toString().trim()
-        val password = passwordState.text.toString()
         val token = AppContainer.tokenStore.load()
 
         running = true
         paused = false
         pauseFile.delete()
-        val t = thread {
+        if (fn == "scan") { scanning = true }
+        thread {
             try {
                 val py = Python.getInstance()
                 val mod = py.getModule("brush_app")
                 val logPath = logFile.absolutePath
-                val ret: Int = if (!token.isNullOrBlank()) {
-                    mod.callAttr(
-                        "run_brush_token", logPath, token, account, password, hw,
-                        settings.concurrency, settings.qps, dryRun, settings.burst,
-                    ).toInt()
+                if (fn == "scan") {
+                    val json = mod.callAttr("scan_tasks", logPath, token ?: "").toString()
+                    val parsed = runCatching {
+                        Json.parseToJsonElement(json).jsonArray.map { el ->
+                            val o = el.jsonObject
+                            BrushTask(
+                                homeworkId = o["homeworkId"]?.jsonPrimitive?.contentOrNull ?: "",
+                                lessonId = o["lessonId"]?.jsonPrimitive?.contentOrNull ?: "",
+                                title = o["title"]?.jsonPrimitive?.contentOrNull ?: "",
+                                subject = o["subject"]?.jsonPrimitive?.contentOrNull ?: "",
+                                duration = o["duration"]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 0,
+                            )
+                        }
+                    }.getOrNull() ?: emptyList()
+                    handler.post { tasks = parsed }
                 } else {
-                    mod.callAttr(
-                        "run_brush", logPath, account, password, hw,
-                        settings.concurrency, settings.qps, dryRun, settings.burst,
-                    ).toInt()
+                    val ret: Int = if (!token.isNullOrBlank()) {
+                        mod.callAttr(
+                            "run_brush_token", logPath, token, "", "", "",
+                            task?.lessonId ?: "", settings.concurrency, settings.qps, dryRun, settings.burst,
+                        ).toInt()
+                    } else {
+                        mod.callAttr(
+                            "run_brush", logPath, "", "", "",
+                            settings.concurrency, settings.qps, dryRun, settings.burst,
+                        ).toInt()
+                    }
+                    handler.post { logText += "\n==== 结束，返回码 $ret ====\n" }
                 }
-                handler.post { logText += "\n==== 结束，返回码 $ret ====\n" }
             } catch (e: Throwable) {
                 handler.post { logText += "\n==== 调用异常: ${e.javaClass.simpleName}: ${e.message} ====\n" }
             } finally {
                 running = false
                 paused = false
                 pauseFile.delete()
+                scanning = false
             }
         }
-        runThread.value = t
     }
 
     fun togglePause() {
         if (!running) return
         paused = !paused
         if (paused) {
-            // 写暂停标志文件，Python 侧检测到后暂停刷课
             runCatching { pauseFile.writeText("pause") }
             logText += "\n⏸ 已暂停，点击继续恢复刷课\n"
         } else {
@@ -246,6 +283,79 @@ fun CourseBrushScreen(
                     }
                 }
             }
+            // 扫描未刷课程
+            item(key = "scan_btn") {
+                Button(
+                    onClick = { runPy("scan") },
+                    enabled = !running && !scanning,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        text = if (scanning) "扫描中…" else "扫描未刷课程",
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+            // 未刷课程列表
+            tasks?.let { list ->
+                if (list.isEmpty()) {
+                    item(key = "no_tasks") {
+                        Text(
+                            text = "没有未刷课程",
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.padding(vertical = 8.dp),
+                        )
+                    }
+                } else {
+                    item(key = "task_title") {
+                        SmallTitle(text = "未刷课程（${list.size}）")
+                    }
+                    list.forEach { t ->
+                        item(key = "task_${t.lessonId}") {
+                            val isSel = selectedLesson == t.lessonId
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp),
+                                insideMargin = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                onClick = {
+                                    selectedLesson = t.lessonId
+                                    runPy("brush", t)
+                                },
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(
+                                            text = t.title,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = if (isSel) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                        )
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(
+                                            text = "${t.subject} · ${t.duration / 60}min",
+                                            fontSize = 11.sp,
+                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                        )
+                                    }
+                                    if (isSel) {
+                                        Text(
+                                            text = "刷课中…",
+                                            fontSize = 11.sp,
+                                            color = MiuixTheme.colorScheme.primary,
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             // 参数摘要（只读）
             item(key = "params_summary") {
                 Card(
@@ -261,36 +371,6 @@ fun CourseBrushScreen(
                     )
                 }
             }
-            // 账号密码（可选，token 失效续期用）
-            item(key = "account") {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp),
-                    insideMargin = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        TextField(
-                            state = accountState,
-                            label = "账号（可选，token 失效时续期用）",
-                            useLabelAsPlaceholder = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        TextField(
-                            state = passwordState,
-                            label = "密码",
-                            useLabelAsPlaceholder = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        TextField(
-                            state = hwState,
-                            label = "只刷指定作业 ID（可选）",
-                            useLabelAsPlaceholder = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                }
-            }
             item(key = "actions") {
                 Row(
                     modifier = Modifier
@@ -299,8 +379,12 @@ fun CourseBrushScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Button(
-                        onClick = { if (running) togglePause() else runBrush() },
+                        onClick = { if (running) togglePause() else runPy("brush") },
                         enabled = true,
+                        colors = ButtonDefaults.buttonColors(
+                            color = MiuixTheme.colorScheme.primary,
+                            contentColor = MiuixTheme.colorScheme.onPrimary,
+                        ),
                         modifier = Modifier.weight(1f),
                     ) {
                         Text(
@@ -323,22 +407,29 @@ fun CourseBrushScreen(
                 ) {
                     SmallTitle(text = "运行日志")
                     Spacer(Modifier.weight(1f))
-                    // Detail 切换（小号）
-                    TextButton(
-                        text = if (showDetail) "Summary" else "Detail",
-                        onClick = { showDetail = !showDetail },
-                        modifier = Modifier.padding(0.dp),
-                    )
-                    // 清空
-                    TextButton(
-                        text = "清空",
-                        onClick = {
-                            logFile.delete()
-                            logText = ""
-                            lastLen = 0
-                        },
-                        modifier = Modifier.padding(0.dp),
-                    )
+                    // 三条杠 → 日志菜单（Detail / 清空）
+                    Box {
+                        IconButton(onClick = { showLogMenu = true }) {
+                            Text(
+                                text = "☰",
+                                fontSize = 16.sp,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                            )
+                        }
+                        if (showLogMenu) {
+                            LogMenuPopup(
+                                showDetail = showDetail,
+                                onDetail = { showDetail = !showDetail; showLogMenu = false },
+                                onClear = {
+                                    logFile.delete()
+                                    logText = ""
+                                    lastLen = 0
+                                    showLogMenu = false
+                                },
+                                onDismiss = { showLogMenu = false },
+                            )
+                        }
+                    }
                 }
             }
             item(key = "log") {
@@ -369,6 +460,52 @@ fun CourseBrushScreen(
                         },
                     )
                 }
+            }
+        }
+    }
+}
+
+/** 日志菜单：三条杠弹出（Detail 切换 / 清空），miuix 风格淡入缩放 + 阴影 */
+@Composable
+private fun LogMenuPopup(
+    showDetail: Boolean,
+    onDetail: () -> Unit,
+    onClear: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val enter = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        enter.animateTo(1f, tween(200, easing = LinearOutSlowInEasing))
+    }
+    val p = enter.value
+    Popup(
+        alignment = Alignment.TopEnd,
+        offset = IntOffset(0, 8),
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true),
+    ) {
+        Card(
+            modifier = Modifier
+                .width(140.dp)
+                .graphicsLayer {
+                    alpha = p
+                    scaleX = 0.94f + 0.06f * p
+                    scaleY = 0.94f + 0.06f * p
+                },
+            cornerRadius = 16.dp,
+            insideMargin = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+        ) {
+            Column {
+                TextButton(
+                    text = if (showDetail) "Summary" else "Detail",
+                    onClick = onDetail,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(
+                    text = "清空",
+                    onClick = onClear,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }
