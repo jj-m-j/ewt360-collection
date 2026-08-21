@@ -21,9 +21,9 @@ object HtmlCleaner {
         Regex("""<img[^>]*Wirisformula[^>]*src="([^"]*)"[^>]*>""", RegexOption.IGNORE_CASE)
     private val brRe = Regex("""<br[^>]*>""", RegexOption.IGNORE_CASE)
     private val stripTagRe = Regex("""<(?!img\b|/img\b)[^>]+>""", RegexOption.IGNORE_CASE)
-    // 匹配所有图片（file.ewt360.com / Wiris 公式图 / 协议相对 // 均覆盖）
+    // 匹配所有图片：属性顺序任意（class/style/role/src 乱序均可），file.ewt360.com / Wiris 公式图 / 协议相对 // 均覆盖
     private val imgRe = Regex(
-        """<img\s+src="((?:https?:)?//[^"]*)"(?:[^>]*?)>""",
+        """<img[^>]*?src="((?:https?:)?//[^"]*)"[^>]*>""",
         RegexOption.IGNORE_CASE,
     )
     private val newlineRe = Regex("""\n{3,}""")
@@ -32,7 +32,7 @@ object HtmlCleaner {
     private fun normalizeImgUrl(url: String): String {
         var u = url.trim()
         if (u.startsWith("//")) u = "https:$u"
-        u = u.replace(Regex("""^http://file\.ewt360\.com/"""), "https://file.ewt360.com/")
+        if (u.startsWith("http://")) u = "https://" + u.removePrefix("http://")
         return u
     }
 
@@ -64,6 +64,10 @@ object HtmlCleaner {
         t = newlineRe.replace(t, "\n\n")
         return t.trim()
     }
+
+    /** 判断清洗后文本是否包含图片标签（用于答案区选择纯文本 / 富文本渲染） */
+    fun containsImage(cleaned: String): Boolean =
+        imgRe.containsMatchIn(cleaned)
 
     /** 解析为文本 + 图片分段（用于 Compose 渲染解析内容） */
     fun parseSegments(html: String?): List<Segment> {
