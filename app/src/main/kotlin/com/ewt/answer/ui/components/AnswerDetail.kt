@@ -19,6 +19,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -166,14 +168,25 @@ fun AnswerDetailCard(
                 AttachmentImageList(a.attachmentImages)
             }
 
-            // 调试：答案与解析均未提取到时，展示接口原始返回
-            if (a.answer.isBlank() && a.analysisHtml.isBlank() && a.childItems.isEmpty() && a.rawJson.isNotBlank()) {
+            // 调试：查看接口返回的 JSON 原始数据（图片等提取异常时排查用）
+            if (a.rawJson.isNotBlank()) {
                 var showRaw by remember { mutableStateOf(false) }
+                val clipboard = LocalClipboardManager.current
                 Spacer(Modifier.height(10.dp))
-                TextButton(
-                    text = if (showRaw) "收起原始返回" else "查看接口原始返回",
-                    onClick = { showRaw = !showRaw },
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        text = if (showRaw) "收起 JSON 原始数据" else "查看 JSON 原始数据",
+                        onClick = { showRaw = !showRaw },
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        text = "复制",
+                        onClick = { clipboard.setText(AnnotatedString(a.rawJson)) },
+                    )
+                }
                 AnimatedVisibility(visible = showRaw) {
                     Text(
                         text = a.rawJson,

@@ -45,6 +45,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ewt.answer.data.AppContainer
@@ -70,7 +72,7 @@ import top.yukonga.miuix.kmp.window.WindowDialog
 sealed class Screen {
     data object Boot : Screen()
     data object Login : Screen()
-    /** 主层（底部 Tab：0=试卷 1=设置） */
+    /** 主层（底部 Tab：0=课程 1=试卷 2=设置） */
     data object Main : Screen()
     data object LinkQuery : Screen()
     data object Debug : Screen()
@@ -79,9 +81,10 @@ sealed class Screen {
     data class Questions(val paper: Paper) : Screen()
 }
 
-/** 底部 Tab 索引：试卷 / 设置 */
-private const val TAB_PAPERS = 0
-private const val TAB_SETTINGS = 1
+/** 底部 Tab 索引：课程 / 试卷 / 设置 */
+private const val TAB_COURSE = 0
+private const val TAB_PAPERS = 1
+private const val TAB_SETTINGS = 2
 
 /** 弹窗底部操作栏：取消(次要) + 确认(小米蓝) 右对齐 —— 全应用统一 */
 @Composable
@@ -153,8 +156,8 @@ fun AppRoot() {
         var screen by remember { mutableStateOf<Screen>(Screen.Boot) }
         var previous by remember { mutableStateOf<Screen?>(null) }
         var userInfo by remember { mutableStateOf<UserInfo?>(null) }
-        // 主层底部 Tab（试卷 / 设置）
-        var tab by remember { mutableIntStateOf(TAB_PAPERS) }
+        // 主层底部 Tab（课程 / 试卷 / 设置）
+        var tab by remember { mutableIntStateOf(TAB_COURSE) }
         // paperId → 真实题数（打开试卷后回传，主页展示）
         var paperCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
         // 主页列表滚动位置（跨页面保留，返回不跳顶）
@@ -490,6 +493,7 @@ private fun MainLayer(
             label = "tab",
         ) { t ->
             when (t) {
+                TAB_COURSE -> CoursePlaceholderScreen()
                 TAB_PAPERS -> HomeScreen(
                     userInfo = userInfo,
                     paperCounts = paperCounts,
@@ -510,6 +514,7 @@ private fun MainLayer(
         // 液态玻璃悬浮底栏：内容包裹窄胶囊，居中悬浮（在内容层之外采样，无递归）
         LiquidGlassBottomBar(
             tabs = listOf(
+                LiquidGlassTab(icon = CourseTabIcon, label = "课程"),
                 LiquidGlassTab(icon = PaperTabIcon, label = "试卷"),
                 LiquidGlassTab(icon = SettingsTabIcon, label = "设置"),
             ),
@@ -543,6 +548,31 @@ private fun miSansTextStyles(fontFamily: FontFamily): TextStyles {
         title3 = base.title3.copy(fontFamily = fontFamily),
         title4 = base.title4.copy(fontFamily = fontFamily),
     )
+}
+
+/** 课程占位页（课程功能已移除，仅保留占位） */
+@Composable
+private fun CoursePlaceholderScreen() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = "课程",
+                fontSize = 26.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MiuixTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = "课程功能已移除\n敬请期待",
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+                color = MiuixTheme.colorScheme.onSurfaceSecondary,
+            )
+        }
+    }
 }
 
 @Composable
