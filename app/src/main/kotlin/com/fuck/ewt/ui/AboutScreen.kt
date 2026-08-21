@@ -244,7 +244,7 @@ fun AboutScreen(
                     }
                 }
             }
-            item(key = "div_4") { SettingDivider() }
+            item(key = "div_3b") { SettingDivider() }
 
             item(key = "about") {
                 ActionCard(
