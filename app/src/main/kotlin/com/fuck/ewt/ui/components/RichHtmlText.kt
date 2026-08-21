@@ -1,10 +1,12 @@
 package com.fuck.ewt.ui.components
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
@@ -21,9 +23,11 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * 渲染解析 HTML：文本 + 公式图 / 插图分段展示。
- * 图片走全局 ImageLoader（EwtApplication 已配 UA/Referer 头），并统一 https + 转义清理。
+ * 渲染解析 HTML：文本 + 公式图 / 插图。
+ * 公式图作为【流内元素】与文字混排（FlowRow），跟在文字后自动换行、同行显示，
+ * 不再每个公式独占一行居中放大。
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RichHtmlText(
     html: String?,
@@ -33,7 +37,13 @@ fun RichHtmlText(
 ) {
     val segments = remember(html) { HtmlCleaner.parseSegments(html) }
     if (segments.isEmpty()) return
-    Column(modifier = modifier) {
+
+    FlowRow(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+        maxItemsInEachRow = Int.MAX_VALUE,
+    ) {
         segments.forEach { seg ->
             when (seg) {
                 is HtmlCleaner.Segment.Text -> {
@@ -45,19 +55,23 @@ fun RichHtmlText(
                     )
                 }
                 is HtmlCleaner.Segment.Image -> {
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        EwtImage(url = seg.url)
-                    }
+                    // 公式/行内图：高度贴近文字行，宽度按比例，充当流内元素
+                    AsyncImage(
+                        model = normalizeEwtImageUrl(seg.url),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .padding(vertical = 2.dp)
+                            .height((fontSize.value * 1.4f).dp)
+                            .widthIn(max = 260.dp),
+                        contentScale = ContentScale.Fit,
+                    )
                 }
             }
         }
     }
 }
 
-/** 渲染附件图片列表 */
+/** 渲染附件图片列表（独立大图，占满宽） */
 @Composable
 fun AttachmentImageList(urls: List<String>, modifier: Modifier = Modifier) {
     if (urls.isEmpty()) return
@@ -67,30 +81,17 @@ fun AttachmentImageList(urls: List<String>, modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center,
             ) {
-                EwtImage(url = url)
+                AsyncImage(
+                    model = normalizeEwtImageUrl(url),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .padding(vertical = 6.dp)
+                        .fillMaxWidth(),
+                    contentScale = ContentScale.Fit,
+                )
             }
         }
     }
-}
-
-/**
- * EWT 图片：https 规范化 + 全局 ImageLoader 头（UA/Referer）加载。
- * 统一策略：所有公式/插图固定行高，宽度按原始宽高比自适应（不撑满整行，避免巨大）。
- * ContentScale.Fit 保持比例，宽度超过 max 时压缩、高度相应减小。整体垂直居中。
- */
-@Composable
-private fun EwtImage(url: String) {
-    val normalized = normalizeEwtImageUrl(url)
-    // 固定高度：所有图同高（视觉整齐），宽度按比例；超宽图由 widthIn 压缩，高度随之略减
-    AsyncImage(
-        model = normalized,
-        contentDescription = null,
-        modifier = Modifier
-            .padding(vertical = 2.dp)
-            .height(24.dp)
-            .widthIn(max = 300.dp),
-        contentScale = ContentScale.Fit,
-    )
 }
 
 /** 规范化图片 URL：JSON 转义反斜杠 / 相对协议 / http→https */
