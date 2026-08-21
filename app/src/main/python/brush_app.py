@@ -47,7 +47,9 @@ def _prepare(log_path):
         logging.root.removeHandler(h)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     token_file = os.path.join(os.path.dirname(log_path) or ".", "token.txt")
+    pause_file = os.path.join(os.path.dirname(log_path) or ".", "pause.flag")
     os.environ["EWT_TOKEN_FILE"] = token_file
+    os.environ["EWT_PAUSE_FILE"] = pause_file
     import ewt_brush_v2 as b
     return b
 
