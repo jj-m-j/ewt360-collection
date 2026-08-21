@@ -12,7 +12,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -168,11 +168,9 @@ fun CourseBrushScreen(
                 val mod = py.getModule("brush_app")
                 val logPath = logFile.absolutePath
                 queue.forEachIndexed { i, t ->
-                    if (pauseFile.exists()) {
-                        // 暂停等待
-                        while (pauseFile.exists()) {
-                            Thread.sleep(500)
-                        }
+                    // 暂停检查
+                    while (pauseFile.exists()) {
+                        Thread.sleep(500)
                     }
                     handler.post {
                         logText += "\n▶ 队列 ${i + 1}/${queue.size}：${t.title}\n"
@@ -411,7 +409,7 @@ fun CourseBrushScreen(
                                             runPy("brush", t)
                                         }
                                     },
-                                    onLongClick = {
+                                    onLongPress = {
                                         // 长按进入多选
                                         selectMode = true
                                         selectedIds = setOf(t.lessonId)
