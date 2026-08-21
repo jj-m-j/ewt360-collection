@@ -16,10 +16,8 @@ android {
         applicationId = "com.ewt.answer"
         minSdk = 24
         targetSdk = 37
-        // 构建号 = GitHub Actions run_number（当前是第几次构建就显示几）
-        val runNumber = System.getenv("GITHUB_RUN_NUMBER") ?: "1"
-        versionCode = runNumber.toIntOrNull() ?: 1
-        versionName = "build ${runNumber}"
+        versionCode = 1
+        versionName = "1.0.0"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
