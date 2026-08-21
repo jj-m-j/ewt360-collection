@@ -379,6 +379,9 @@ class EwtRepository(private val tokenStore: SecureTokenStore) {
                 session.paperId, session.reportId, session.platform, question.questionId, session.bizCode,
             ).optObj("data") ?: return null
 
+            // 答案原始返回 JSON 记入调试日志（受「记录日志」开关控制，默认关闭）
+            DebugLog.d("Ans", "原始返回 q=${question.questionId}\n" + data.toString())
+
             var answerStr = extractAnswerText(data)
             var analysisHtml = extractAnalysisHtml(data)
             val choiceAnswers = extractChoiceList(data).toMutableList()

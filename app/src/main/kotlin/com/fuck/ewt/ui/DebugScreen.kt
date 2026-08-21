@@ -71,6 +71,30 @@ fun DebugScreen(onBack: () -> Unit) {
                 .padding(padding)
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
+            // ── 记录日志开关（默认关闭，开启后抓取接口与答案原始 JSON 到下方日志）──
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                insideMargin = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "记录日志（含接口与答案原始 JSON）",
+                        fontSize = 14.sp,
+                        color = MiuixTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f),
+                    )
+                    top.yukonga.miuix.kmp.basic.Switch(
+                        checked = DebugLog.enabled,
+                        onCheckedChange = { DebugLog.setEnabled(context, it) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+
+            // ── 区块一：App / 试卷日志 ──
             SmallTitle("App / 试卷日志")
             Spacer(Modifier.height(6.dp))
             Card(
@@ -92,8 +116,16 @@ fun DebugScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                TextButton(text = "刷新", onClick = { appLog = DebugLog.readLog() }, modifier = Modifier.weight(1f))
-                TextButton(text = "分享", onClick = { shareLog(context) }, modifier = Modifier.weight(1f))
+                TextButton(
+                    text = "刷新",
+                    onClick = { appLog = DebugLog.readLog() },
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = "分享",
+                    onClick = { shareLog(context) },
+                    modifier = Modifier.weight(1f),
+                )
                 TextButton(
                     text = "清空",
                     onClick = {
@@ -105,6 +137,7 @@ fun DebugScreen(onBack: () -> Unit) {
             }
 
             Spacer(Modifier.height(16.dp))
+            // 分割线
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -113,6 +146,7 @@ fun DebugScreen(onBack: () -> Unit) {
             )
             Spacer(Modifier.height(16.dp))
 
+            // ── 区块二：刷课日志 ──
             SmallTitle("刷课日志")
             Spacer(Modifier.height(6.dp))
             Text(

@@ -3,11 +3,13 @@ package com.fuck.ewt.ui.components
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.TextUnit
@@ -43,7 +45,10 @@ fun RichHtmlText(
                     )
                 }
                 is HtmlCleaner.Segment.Image -> {
-                    Box(modifier = Modifier.fillMaxWidth()) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
                         EwtImage(url = seg.url)
                     }
                 }
@@ -58,7 +63,10 @@ fun AttachmentImageList(urls: List<String>, modifier: Modifier = Modifier) {
     if (urls.isEmpty()) return
     Column(modifier = modifier) {
         urls.forEach { url ->
-            Box(modifier = Modifier.fillMaxWidth()) {
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
                 EwtImage(url = url)
             }
         }
@@ -67,19 +75,20 @@ fun AttachmentImageList(urls: List<String>, modifier: Modifier = Modifier) {
 
 /**
  * EWT 图片：https 规范化 + 全局 ImageLoader 头（UA/Referer）加载。
- * 统一策略：不撑满整行（避免巨大），高度限制在合理区间，宽度自适应（max 320dp）。
- * ContentScale.Fit 保持原始宽高比；分数等高瘦结构自然更高，但不失控。
+ * 统一策略：所有公式/插图固定行高，宽度按原始宽高比自适应（不撑满整行，避免巨大）。
+ * ContentScale.Fit 保持比例，宽度超过 max 时压缩、高度相应减小。整体垂直居中。
  */
 @Composable
 private fun EwtImage(url: String) {
     val normalized = normalizeEwtImageUrl(url)
+    // 固定高度：所有图同高（视觉整齐），宽度按比例；超宽图由 widthIn 压缩，高度随之略减
     AsyncImage(
         model = normalized,
         contentDescription = null,
         modifier = Modifier
             .padding(vertical = 2.dp)
-            .heightIn(min = 18.dp, max = 44.dp)
-            .widthIn(max = 320.dp),
+            .height(24.dp)
+            .widthIn(max = 300.dp),
         contentScale = ContentScale.Fit,
     )
 }
