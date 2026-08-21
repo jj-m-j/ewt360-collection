@@ -1,7 +1,6 @@
 package com.ewt.answer.ui
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.fadeIn
@@ -431,7 +430,7 @@ private fun FilterRow(
 
 private enum class FilterPane { Main, Date, Subject }
 
-/** 三条杠弹层：主面板矮、滚轮面板高，切换快（内容即时显示，高度 120ms 跟进） */
+/** 三条杠弹层：主面板矮、滚轮面板高（高度即时切换，无大小过渡动画） */
 @Composable
 private fun FilterPopupCard(
     exiting: Boolean,
@@ -466,7 +465,6 @@ private fun FilterPopupCard(
     Card(
         modifier = Modifier
             .width(200.dp)
-            .animateContentSize(tween(120))
             .graphicsLayer {
                 alpha = p
                 scaleX = 0.94f + 0.06f * p
