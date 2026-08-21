@@ -1,14 +1,12 @@
 package com.fuck.ewt.ui.components
 
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.TextUnit
@@ -22,7 +20,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /**
  * 渲染解析 HTML：文本 + 公式图 / 插图分段展示。
  * 图片走全局 ImageLoader（EwtApplication 已配 UA/Referer 头），并统一 https + 转义清理。
- * Wiris 公式 SVG 高度与文字大小对齐（行内公式效果），普通插图保持原尺寸自适应。
+ * Wiris 公式 SVG：保留原始宽高比，高度限制在 [min,max] 区间内按比例缩放
+ * （普通公式接近文字高度，分数等结构更高但封顶），宽度自适应不撑满整行。
  */
 @Composable
 fun RichHtmlText(
@@ -45,10 +44,7 @@ fun RichHtmlText(
                     )
                 }
                 is HtmlCleaner.Segment.Image -> {
-                    EwtImage(
-                        url = seg.url,
-                        formulaHeight = (fontSize.value * 1.1f + 4f).dp,
-                    )
+                    EwtImage(url = seg.url)
                 }
             }
         }
@@ -68,13 +64,11 @@ fun AttachmentImageList(urls: List<String>, modifier: Modifier = Modifier) {
 
 /**
  * EWT 图片：https 规范化 + 全局 ImageLoader 头（UA/Referer）加载。
- * Wiris 公式 SVG：高度随文字（行内公式与文字同高）；普通插图：fillMaxWidth。
+ * Wiris 公式 SVG：保留原始宽高比，高度限制 16dp..44dp 按比例缩放，宽度自适应（max 320dp）；
+ * 普通插图：fillMaxWidth 自适应。
  */
 @Composable
-private fun EwtImage(
-    url: String,
-    formulaHeight: androidx.compose.ui.unit.Dp = 30.dp,
-) {
+private fun EwtImage(url: String) {
     val normalized = normalizeEwtImageUrl(url)
     val isFormula = normalized.contains("Wirisformula") || normalized.contains("wiris")
     if (isFormula) {
@@ -82,9 +76,9 @@ private fun EwtImage(
             model = normalized,
             contentDescription = null,
             modifier = Modifier
-                .fillMaxWidth()
                 .padding(vertical = 2.dp)
-                .height(formulaHeight),
+                .heightIn(min = 16.dp, max = 44.dp)
+                .widthIn(max = 320.dp),
             contentScale = ContentScale.Fit,
         )
     } else {
