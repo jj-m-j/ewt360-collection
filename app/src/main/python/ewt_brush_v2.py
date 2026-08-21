@@ -1107,6 +1107,11 @@ async def run_brush_task(
 
         # Step 4: 竞态爆发循环（stay_time=10s 最优，实测验证）
         while (needed > 0 or round_num < force_rounds) and stall_count < 3:
+            # 暂停检查（App 端写 pause.flag 暂停刷课，每轮爆发前生效）
+            pause_file = os.environ.get("EWT_PAUSE_FILE", "")
+            while pause_file and os.path.exists(pause_file):
+                print("⏸ 已暂停（等待继续）…", flush=True)
+                await asyncio.sleep(1)
             round_num += 1
             # 等待间隔（bucket refill ~12s）。首轮加 phase_offset_ms 错峰。
             # BURST_WAIT 加 ±20% 抖动——打散节奏降低 WAF 频率识别概率。
