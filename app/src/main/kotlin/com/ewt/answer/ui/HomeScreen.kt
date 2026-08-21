@@ -48,10 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -83,20 +80,6 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
-
-/** 筛选图标（三条横线，与课程页 ☰ 一致的 24dp filter_list） */
-private val FilterListIcon: ImageVector by lazy {
-    ImageVector.Builder(
-        name = "FilterList",
-        defaultWidth = 24.dp,
-        defaultHeight = 24.dp,
-        viewportWidth = 24f,
-        viewportHeight = 24f,
-    ).addPath(
-        pathData = addPathNodes("M24,10H0V12H24V10ZM24,6H0V8H24V6ZM0,16H24V14H0V16Z"),
-        fill = SolidColor(Color.Black),
-    ).build()
-}
 
 @Composable
 fun HomeScreen(
@@ -236,21 +219,6 @@ fun HomeScreen(
                         onTogglePause = { vm.toggleBrushPause() },
                     )
                 }
-                // 三条杠：与第一个日期分组标题同排（右侧），弹层从按钮旁生长
-                item(key = "filter_row") {
-                    FilterRow(
-                        dateFilter = dateFilter,
-                        subjectFilter = subjectFilter,
-                        dates = dates,
-                        subjects = subjects,
-                        onDateSelect = { vm.setDateFilter(it) },
-                        onSubjectSelect = { vm.setSubjectFilter(it) },
-                        onClear = {
-                            vm.setDateFilter(null)
-                            vm.setSubjectFilter(null)
-                        },
-                    )
-                }
 
                 when (val state = uiState) {
                     HomeViewModel.UiState.Loading -> {
@@ -295,19 +263,31 @@ fun HomeScreen(
                                 EmptyHint("当前筛选 / 搜索条件下没有任务")
                             }
                         } else {
-                            dateGroups.forEach { (date, papers) ->
+                            dateGroups.forEachIndexed { idx, (date, papers) ->
                                 item(key = "date_$date") {
-                                    Column {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
                                         SmallTitle(
                                             text = if (date == "其他") "未分类" else date,
+                                            modifier = Modifier.weight(1f),
                                         )
-                                        Box(
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .height(0.5.dp)
-                                                .padding(vertical = 6.dp)
-                                                .background(MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.15f)),
-                                        )
+                                        // 三条杠：与第一个日期标题同排（右侧），样式与课程页一致（☰）
+                                        if (idx == 0) {
+                                            FilterRow(
+                                                dateFilter = dateFilter,
+                                                subjectFilter = subjectFilter,
+                                                dates = dates,
+                                                subjects = subjects,
+                                                onDateSelect = { vm.setDateFilter(it) },
+                                                onSubjectSelect = { vm.setSubjectFilter(it) },
+                                                onClear = {
+                                                    vm.setDateFilter(null)
+                                                    vm.setSubjectFilter(null)
+                                                },
+                                            )
+                                        }
                                     }
                                 }
                                 items(papers, key = { it.paperId }) { paper ->
@@ -375,6 +355,7 @@ fun HomeScreen(
 
 // ── 三条杠 + 锚点弹层 ───
 
+/** 三条杠（☰ 样式与课程页一致）+ 筛选弹层 */
 @Composable
 private fun FilterRow(
     dateFilter: String?,
@@ -390,57 +371,50 @@ private fun FilterRow(
     var popupVisible by remember { mutableStateOf(false) }
     var popupExiting by remember { mutableStateOf(false) }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.End,
-    ) {
-        Box {
-            IconButton(
-                onClick = {
-                    scope.launch {
-                        btnScale.animateTo(0.97f, tween(60, easing = LinearEasing))
-                        btnScale.animateTo(1f, tween(60, easing = LinearEasing))
-                    }
-                    popupExiting = false
-                    popupVisible = true
-                },
-            ) {
-                Icon(
-                    imageVector = FilterListIcon,
-                    contentDescription = "筛选",
-                    tint = MiuixTheme.colorScheme.primary,
-                    modifier = Modifier.graphicsLayer {
-                        scaleX = btnScale.value
-                        scaleY = btnScale.value
-                    },
-                )
-            }
-            if (popupVisible) {
-                val density = LocalDensity.current
-                Popup(
-                    alignment = Alignment.TopEnd,
-                    offset = IntOffset(0, with(density) { 6.dp.roundToPx() }),
-                    onDismissRequest = { if (!popupExiting) popupExiting = true },
-                    properties = PopupProperties(focusable = true),
-                ) {
-                    FilterPopupCard(
-                        exiting = popupExiting,
-                        onExitFinished = {
-                            popupVisible = false
-                            popupExiting = false
-                        },
-                        dateFilter = dateFilter,
-                        subjectFilter = subjectFilter,
-                        dates = dates,
-                        subjects = subjects,
-                        onDateSelect = onDateSelect,
-                        onSubjectSelect = onSubjectSelect,
-                        onClear = onClear,
-                    )
+    Box {
+        IconButton(
+            onClick = {
+                scope.launch {
+                    btnScale.animateTo(0.97f, tween(60, easing = LinearEasing))
+                    btnScale.animateTo(1f, tween(60, easing = LinearEasing))
                 }
+                popupExiting = false
+                popupVisible = true
+            },
+        ) {
+            // ☰ 字符，与课程页三条杠一致
+            Text(
+                text = "☰",
+                fontSize = 16.sp,
+                color = MiuixTheme.colorScheme.primary,
+                modifier = Modifier.graphicsLayer {
+                    scaleX = btnScale.value
+                    scaleY = btnScale.value
+                },
+            )
+        }
+        if (popupVisible) {
+            val density = LocalDensity.current
+            Popup(
+                alignment = Alignment.TopEnd,
+                offset = IntOffset(0, with(density) { 6.dp.roundToPx() }),
+                onDismissRequest = { if (!popupExiting) popupExiting = true },
+                properties = PopupProperties(focusable = true),
+            ) {
+                FilterPopupCard(
+                    exiting = popupExiting,
+                    onExitFinished = {
+                        popupVisible = false
+                        popupExiting = false
+                    },
+                    dateFilter = dateFilter,
+                    subjectFilter = subjectFilter,
+                    dates = dates,
+                    subjects = subjects,
+                    onDateSelect = onDateSelect,
+                    onSubjectSelect = onSubjectSelect,
+                    onClear = onClear,
+                )
             }
         }
     }
