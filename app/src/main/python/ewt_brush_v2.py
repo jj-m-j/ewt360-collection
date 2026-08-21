@@ -1561,6 +1561,11 @@ async def run_brush_all(
         failed: list[dict] = []
         pending = list(tasks)
         while pending:
+            # 暂停检查（App 端写 pause.flag 暂停刷课）
+            pause_file = os.environ.get("EWT_PAUSE_FILE", "")
+            while pause_file and os.path.exists(pause_file):
+                print("⏸ 已暂停（等待继续）…", flush=True)
+                await asyncio.sleep(1)
             batch = pending[:concurrency]
             pending = pending[concurrency:]
 
