@@ -45,6 +45,7 @@ data class BrushSettings(
     val concurrency: String = "6",
     val qps: String = "150",
     val burst: String = "8",
+    val forceAll: Boolean = false,
 )
 
 /**

@@ -165,12 +165,12 @@ fun CourseBrushScreen(
                 val ret: Int = if (!token.isNullOrBlank()) {
                     mod.callAttr(
                         "run_brush_token", logPath, token, "", "", lessonFilter,
-                        settings.concurrency, settings.qps, false, settings.burst,
+                        settings.concurrency, settings.qps, false, settings.burst, settings.forceAll,
                     ).toInt()
                 } else {
                     mod.callAttr(
                         "run_brush", logPath, "", "", lessonFilter,
-                        settings.concurrency, settings.qps, false, settings.burst,
+                        settings.concurrency, settings.qps, false, settings.burst, settings.forceAll,
                     ).toInt()
                 }
                 handler.post { logText += "\n==== 队列刷结束，返回码 $ret ====\n" }
@@ -199,12 +199,12 @@ fun CourseBrushScreen(
                 val ret: Int = if (!token.isNullOrBlank()) {
                     mod.callAttr(
                         "run_brush_token", logPath, token, "", "", "",
-                        settings.concurrency, settings.qps, false, settings.burst,
+                        settings.concurrency, settings.qps, false, settings.burst, settings.forceAll,
                     ).toInt()
                 } else {
                     mod.callAttr(
                         "run_brush", logPath, "", "", "",
-                        settings.concurrency, settings.qps, false, settings.burst,
+                        settings.concurrency, settings.qps, false, settings.burst, settings.forceAll,
                     ).toInt()
                 }
                 handler.post { logText += "\n==== 结束，返回码 $ret ====\n" }
