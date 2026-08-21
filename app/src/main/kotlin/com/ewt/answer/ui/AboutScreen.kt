@@ -139,7 +139,7 @@ fun AboutScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "Fuck Ewt · v1.0.0",
+                            text = "Fuck Ewt · ${versionName(context)}",
                             fontSize = 12.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
@@ -338,6 +338,12 @@ private fun SettingParamRow(
     }
 }
 
+/** 读取当前构建号（versionName） */
+private fun versionName(context: android.content.Context): String =
+    runCatching {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
+    }.getOrDefault("1.0.0")
+
 /** 致谢页：本项目参考的开源项目 */
 @Composable
 fun AboutPlaceholderScreen(onBack: () -> Unit) {
@@ -384,17 +390,21 @@ fun AboutPlaceholderScreen(onBack: () -> Unit) {
             item {
                 CreditCard(name = "miuix", url = "https://github.com/compose-miuix-ui/miuix")
             }
-            // GitHub 图标（官方 svg path）
+            // GitHub 图标（官方 svg path，居中显示）
             item {
-                Icon(
-                    imageVector = GithubLogo,
-                    contentDescription = "GitHub",
-                    tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                Box(
                     modifier = Modifier
-                        .padding(top = 12.dp)
-                        .size(28.dp)
-                        .align(Alignment.CenterHorizontally),
-                )
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = GithubLogo,
+                        contentDescription = "GitHub",
+                        tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
             }
         }
     }

@@ -1,5 +1,6 @@
 package com.ewt.answer.ui.components
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -7,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.TextUnit
@@ -75,10 +75,9 @@ private fun EwtImage(url: String) {
             model = normalized,
             contentDescription = null,
             modifier = Modifier
+                .fillMaxWidth()
                 .padding(vertical = 2.dp)
-                .height(28.dp)
-                .widthIn(max = 400.dp)
-                .align(Alignment.CenterStart),
+                .height(28.dp),
             contentScale = ContentScale.Fit,
         )
     } else {
