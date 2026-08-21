@@ -53,6 +53,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -530,7 +531,7 @@ private fun FilterPopupCard(
                             TextButton(
                                 text = "清除",
                                 onClick = onClear,
-                                fontSize = 12.sp,
+                                textStyle = TextStyle(fontSize = 12.sp),
                                 colors = ButtonDefaults.textButtonColors(
                                     textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                                 ),
