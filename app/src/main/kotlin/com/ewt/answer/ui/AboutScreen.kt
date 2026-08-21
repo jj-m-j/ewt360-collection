@@ -123,7 +123,7 @@ fun AboutScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "Fuck Ewt · build ${versionName(context)} · MIUIX 风格 · 答案与解析来自 EWT360 官方接口",
+                            text = "Fuck Ewt · v1.0.0 · MIUIX 风格 · 答案与解析来自 EWT360 官方接口",
                             fontSize = 12.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
@@ -371,7 +371,7 @@ private fun SettingValuePopup(
                             modifier = Modifier.fillMaxWidth(),
                             colors = if (isSel) {
                                 ButtonDefaults.textButtonColors(
-                                    contentColor = MiuixTheme.colorScheme.primary,
+                                    textColor = MiuixTheme.colorScheme.primary,
                                 )
                             } else {
                                 ButtonDefaults.textButtonColors()
@@ -383,12 +383,6 @@ private fun SettingValuePopup(
         }
     }
 }
-
-/** 读取当前构建号（versionName） */
-private fun versionName(context: android.content.Context): String =
-    runCatching {
-        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
-    }.getOrDefault("1.0.0")
 
 /** 关于页（占位，后续完善） */
 @Composable
