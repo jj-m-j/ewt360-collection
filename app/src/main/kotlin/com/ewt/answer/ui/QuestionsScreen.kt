@@ -188,7 +188,7 @@ fun QuestionsScreen(
         }
     }
 
-    // 提交确认对话框（取消在上、提交在下）
+    // 提交确认对话框（蓝色提交在上、白色取消在下）
     if (showSubmitDialog) {
         WindowDialog(
             show = true,
@@ -203,12 +203,6 @@ fun QuestionsScreen(
                     color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 )
                 Spacer(Modifier.height(14.dp))
-                TextButton(
-                    text = "取消",
-                    onClick = { showSubmitDialog = false },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(6.dp))
                 Button(
                     onClick = {
                         showSubmitDialog = false
@@ -218,10 +212,20 @@ fun QuestionsScreen(
                         color = MiuixTheme.colorScheme.primary,
                         contentColor = MiuixTheme.colorScheme.onPrimary,
                     ),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
                 ) {
                     Text("提交", fontSize = 14.sp)
                 }
+                Spacer(Modifier.height(8.dp))
+                TextButton(
+                    text = "取消",
+                    onClick = { showSubmitDialog = false },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                )
             }
         }
     }
