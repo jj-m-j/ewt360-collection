@@ -76,6 +76,8 @@ sealed class Screen {
     data object Debug : Screen()
     /** 关于（占位页，从设置页进入） */
     data object About : Screen()
+    /** 课程刷课设置（二级页） */
+    data object CourseSettings : Screen()
     data class Questions(val paper: Paper) : Screen()
 }
 
@@ -158,6 +160,8 @@ fun AppRoot() {
         var tab by remember { mutableIntStateOf(TAB_COURSE) }
         // paperId → 真实题数（打开试卷后回传，主页展示）
         var paperCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+        // 课程刷课参数（跨课程页/设置页共享）
+        var brushSettings by remember { mutableStateOf(BrushSettings()) }
         // 主页列表滚动位置（跨页面保留，返回不跳顶）
         val homeListState: LazyListState = rememberLazyListState()
 
@@ -288,6 +292,8 @@ fun AppRoot() {
                         tab = tab,
                         onTabSelect = { tab = it },
                         repo = repo,
+                        brushSettings = brushSettings,
+                        onBrushSettingsChange = { brushSettings = it },
                         fontEnabled = fontEnabled,
                         onFontEnabledChange = { en ->
                             // 仅切换启用状态：不删除已下载字体，重新开启免下载
@@ -323,7 +329,8 @@ fun AppRoot() {
                             targetState is Screen.Questions ||
                                 targetState is Screen.LinkQuery ||
                                 targetState is Screen.Debug ||
-                                targetState is Screen.About -> {
+                                targetState is Screen.About ||
+                                targetState is Screen.CourseSettings -> {
                                 (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
                                     .togetherWith(fadeOut(tween(200)))
                             }
@@ -343,6 +350,8 @@ fun AppRoot() {
                         tab = tab,
                         onTabSelect = { tab = it },
                         repo = repo,
+                        brushSettings = brushSettings,
+                        onBrushSettingsChange = { brushSettings = it },
                         fontEnabled = fontEnabled,
                         onFontEnabledChange = { en ->
                             // 仅切换启用状态：不删除已下载字体，重新开启免下载
@@ -406,6 +415,8 @@ private fun RenderScreen(
     tab: Int,
     onTabSelect: (Int) -> Unit,
     repo: EwtRepository,
+    brushSettings: BrushSettings,
+    onBrushSettingsChange: (BrushSettings) -> Unit,
     fontEnabled: Boolean,
     onFontEnabledChange: (Boolean) -> Unit,
     navigateTo: (Screen) -> Unit,
@@ -423,16 +434,24 @@ private fun RenderScreen(
             listState = listState,
             tab = tab,
             onTabSelect = onTabSelect,
+            brushSettings = brushSettings,
+            onBrushSettingsChange = onBrushSettingsChange,
             fontEnabled = fontEnabled,
             onFontEnabledChange = onFontEnabledChange,
             onOpenPaper = { paper -> navigateTo(Screen.Questions(paper)) },
             onOpenLinkQuery = { navigateTo(Screen.LinkQuery) },
             onOpenDebug = { navigateTo(Screen.Debug) },
             onOpenAbout = { navigateTo(Screen.About) },
+            onOpenCourseSettings = { navigateTo(Screen.CourseSettings) },
             onLogout = {
                 repo.clearToken()
                 navigateTo(Screen.Login)
             },
+        )
+        Screen.CourseSettings -> CourseBrushSettingsScreen(
+            settings = brushSettings,
+            onChange = onBrushSettingsChange,
+            onBack = onBack,
         )
         Screen.LinkQuery -> LinkQueryScreen(
             onBack = onBack,
@@ -460,12 +479,15 @@ private fun MainLayer(
     listState: LazyListState,
     tab: Int,
     onTabSelect: (Int) -> Unit,
+    brushSettings: BrushSettings,
+    onBrushSettingsChange: (BrushSettings) -> Unit,
     fontEnabled: Boolean,
     onFontEnabledChange: (Boolean) -> Unit,
     onOpenPaper: (Paper) -> Unit,
     onOpenLinkQuery: () -> Unit,
     onOpenDebug: () -> Unit,
     onOpenAbout: () -> Unit,
+    onOpenCourseSettings: () -> Unit,
     onLogout: () -> Unit,
 ) {
     // 玻璃底栏的反射源：捕获整个 Tab 内容（列表滚动画面；顶栏 blur 在页面内部用独立 backdrop，避免成环）
@@ -491,7 +513,10 @@ private fun MainLayer(
             label = "tab",
         ) { t ->
             when (t) {
-                TAB_COURSE -> CourseBrushScreen()
+                TAB_COURSE -> CourseBrushScreen(
+                    settings = brushSettings,
+                    onOpenSettings = onOpenCourseSettings,
+                )
                 TAB_PAPERS -> HomeScreen(
                     userInfo = userInfo,
                     paperCounts = paperCounts,
