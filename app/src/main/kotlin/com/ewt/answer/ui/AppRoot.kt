@@ -65,6 +65,7 @@ import top.yukonga.miuix.kmp.theme.darkColorScheme
 import top.yukonga.miuix.kmp.theme.defaultTextStyles
 import top.yukonga.miuix.kmp.theme.lightColorScheme
 import top.yukonga.miuix.kmp.window.WindowDialog
+import java.io.File
 
 /** 应用内页面 */
 sealed class Screen {
@@ -86,7 +87,7 @@ private const val TAB_COURSE = 0
 private const val TAB_PAPERS = 1
 private const val TAB_SETTINGS = 2
 
-/** 弹窗底部操作栏：取消在上、确认在下（纵向布局，全应用统一） */
+/** 弹窗底部操作栏：蓝色确认在上、白色取消在下（等高，全应用统一） */
 @Composable
 internal fun DialogActions(
     onDismiss: () -> Unit,
@@ -99,22 +100,26 @@ internal fun DialogActions(
             .fillMaxWidth()
             .padding(top = 14.dp),
     ) {
-        TextButton(
-            text = dismissText,
-            onClick = onDismiss,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(Modifier.height(6.dp))
         Button(
             onClick = onConfirm,
             colors = ButtonDefaults.buttonColors(
                 color = MiuixTheme.colorScheme.primary,
                 contentColor = MiuixTheme.colorScheme.onPrimary,
             ),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
         ) {
             Text(confirmText, fontSize = 14.sp)
         }
+        Spacer(Modifier.height(8.dp))
+        TextButton(
+            text = dismissText,
+            onClick = onDismiss,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+        )
     }
 }
 
@@ -138,6 +143,10 @@ fun AppRoot() {
         } else {
             miSans = null
         }
+    }
+    // 每次进入 App：清空刷课日志
+    LaunchedEffect(Unit) {
+        runCatching { File(context.filesDir, "brush.log").delete() }
     }
     // 首次使用：询问是否下载字体
     LaunchedEffect(Unit) {
