@@ -2,7 +2,6 @@ package com.ewt.answer.ui
 
 import android.os.Handler
 import android.os.Looper
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -16,13 +15,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -34,8 +34,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -44,7 +42,6 @@ import com.chaquo.python.Python
 import com.ewt.answer.data.AppContainer
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
@@ -56,17 +53,17 @@ import java.io.RandomAccessFile
 import kotlin.concurrent.thread
 
 /**
- * 课程页：Python 刷课（Chaquopy 内嵌 ewt_brush_v2，miuix 原生排版）。
- * 自动读取主 App 已登录 token（无需账号密码）；日志摘要显示，可切换 Detail；参数在二级设置页。
+ * 课程页：Python 刷课（Chaquopy 内嵌 ewt_brush_v2）。
+ * 自动读取主 App 已登录 token（无需账号密码）；开始刷课后可暂停；日志固定框内滚动。
  */
 @Composable
 fun CourseBrushScreen(
     settings: BrushSettings,
-    onOpenSettings: () -> Unit,
 ) {
     val context = LocalContext.current
     val logFile = remember { File(context.filesDir, "brush.log") }
     val listState = rememberLazyListState()
+    val logScroll = rememberScrollState()
 
     val hwState = rememberTextFieldState()
     val accountState = rememberTextFieldState()
@@ -74,11 +71,14 @@ fun CourseBrushScreen(
 
     var logText by remember { mutableStateOf("") }
     var running by remember { mutableStateOf(false) }
+    var paused by remember { mutableStateOf(false) }
     var dryRun by remember { mutableStateOf(false) }
     var showDetail by remember { mutableStateOf(false) }
+    val pauseFile = remember { File(context.filesDir, "pause.flag") }
+    val runThread = remember { mutableStateOf<Thread?>(null) }
 
-    // 自动获取主 App 已登录 token
-    val savedToken = remember { AppContainer.tokenStore.load() }
+    // 自动获取主 App 已登录 token（不显示明文）
+    val hasToken = remember { !AppContainer.tokenStore.load().isNullOrBlank() }
 
     // 日志轮询：增量读取 brush.log
     val handler = remember { Handler(Looper.getMainLooper()) }
@@ -109,12 +109,9 @@ fun CourseBrushScreen(
         onDispose { handler.removeCallbacks(poller) }
     }
 
-    // 日志自动滑到底部
-    LaunchedEffect(logText) {
-        if (logText.isNotEmpty()) {
-            val count = listState.layoutInfo.totalItemsCount
-            if (count > 0) listState.scrollToItem(count - 1)
-        }
+    // 日志自动滑到底部（固定框内）
+    LaunchedEffect(logText, showDetail) {
+        logScroll.scrollTo(logScroll.maxValue)
     }
 
     fun runBrush() {
@@ -122,22 +119,22 @@ fun CourseBrushScreen(
         val hw = hwState.text.toString().trim()
         val account = accountState.text.toString().trim()
         val password = passwordState.text.toString()
-        val token = savedToken
+        val token = AppContainer.tokenStore.load()
 
         running = true
-        thread {
+        paused = false
+        pauseFile.delete()
+        val t = thread {
             try {
                 val py = Python.getInstance()
                 val mod = py.getModule("brush_app")
                 val logPath = logFile.absolutePath
                 val ret: Int = if (!token.isNullOrBlank()) {
-                    // 有已登录 token：直接刷课（token 失效时用可选账号密码续期）
                     mod.callAttr(
                         "run_brush_token", logPath, token, account, password, hw,
                         settings.concurrency, settings.qps, dryRun, settings.burst,
                     ).toInt()
                 } else {
-                    // 无 token：退回账号密码登录刷课
                     mod.callAttr(
                         "run_brush", logPath, account, password, hw,
                         settings.concurrency, settings.qps, dryRun, settings.burst,
@@ -148,14 +145,27 @@ fun CourseBrushScreen(
                 handler.post { logText += "\n==== 调用异常: ${e.javaClass.simpleName}: ${e.message} ====\n" }
             } finally {
                 running = false
+                paused = false
+                pauseFile.delete()
             }
+        }
+        runThread.value = t
+    }
+
+    fun togglePause() {
+        if (!running) return
+        paused = !paused
+        if (paused) {
+            // 写暂停标志文件，Python 侧检测到后暂停刷课
+            runCatching { pauseFile.writeText("pause") }
+            logText += "\n⏸ 已暂停，点击继续恢复刷课\n"
+        } else {
+            pauseFile.delete()
+            logText += "\n▶ 继续刷课\n"
         }
     }
 
     // ── 摘要算法：过滤噪音行，保留关键进度 ──
-    // 噪音：httpx access 日志（"2026-08-21 20:45:15,708 INFO HTTP Request: ..."）、
-    //       [BFE-REQ] 请求详情（含 body/headers 大段）、空行
-    // 保留：[进度] 轮次、▶ 课时开始、[完成]/[通过]、✓/⚠/✗ 状态、共发现/总时长、处理完成等
     val summaryText = remember(logText) {
         logText.lineSequence()
             .map { it.trimEnd() }
@@ -163,7 +173,6 @@ fun CourseBrushScreen(
                 val t = line.trim()
                 t.isNotEmpty() &&
                     !t.startsWith("[BFE-REQ]") &&
-                    !t.startsWith("  [BFE-REQ]") &&
                     !t.contains("INFO HTTP Request:")
             }
             .joinToString("\n")
@@ -189,7 +198,7 @@ fun CourseBrushScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            // 大标题行 + 设置按钮（齿轮，与底栏同款）
+            // 大标题行（miuix 原生排版）
             item(key = "large_title") {
                 Row(
                     modifier = Modifier
@@ -204,18 +213,9 @@ fun CourseBrushScreen(
                         color = MiuixTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
                     )
-                    // 设置（齿轮）→ 二级设置页
-                    IconButton(onClick = onOpenSettings) {
-                        Image(
-                            painter = rememberVectorPainter(SettingsTabIcon),
-                            contentDescription = "刷课设置",
-                            modifier = Modifier.size(24.dp),
-                            colorFilter = ColorFilter.tint(MiuixTheme.colorScheme.primary),
-                        )
-                    }
                 }
             }
-            // 登录态提示
+            // 登录态 + 仅扫描
             item(key = "token_status") {
                 Card(
                     modifier = Modifier
@@ -228,13 +228,9 @@ fun CourseBrushScreen(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            text = if (savedToken.isNullOrBlank()) "未检测到登录 token，请先登录" else "已登录：${savedToken.take(12)}…${savedToken.takeLast(6)}",
+                            text = if (hasToken) "已登录" else "未检测到登录 token，请先在「试卷」页登录",
                             fontSize = 12.sp,
-                            color = if (savedToken.isNullOrBlank()) {
-                                MiuixTheme.colorScheme.error
-                            } else {
-                                MiuixTheme.colorScheme.primary
-                            },
+                            color = if (hasToken) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.error,
                             modifier = Modifier.weight(1f),
                         )
                         Spacer(Modifier.width(8.dp))
@@ -250,34 +246,22 @@ fun CourseBrushScreen(
                     }
                 }
             }
-            // 参数摘要卡（只读展示，点击进设置页）
+            // 参数摘要（只读）
             item(key = "params_summary") {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 2.dp),
                     insideMargin = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                    onClick = onOpenSettings,
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "并行 ${settings.concurrency} · QPS ${settings.qps} · 爆发 ${settings.burst}",
-                            fontSize = 12.sp,
-                            color = MiuixTheme.colorScheme.onSurfaceSecondary,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Text(
-                            text = "设置 ›",
-                            fontSize = 12.sp,
-                            color = MiuixTheme.colorScheme.primary,
-                        )
-                    }
+                    Text(
+                        text = "并行 ${settings.concurrency} · QPS ${settings.qps} · 爆发 ${settings.burst}（在「设置」页修改）",
+                        fontSize = 12.sp,
+                        color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                    )
                 }
             }
-            // 账号密码（可选，仅 token 失效续期用）
+            // 账号密码（可选，token 失效续期用）
             item(key = "account") {
                 Card(
                     modifier = Modifier
@@ -315,11 +299,18 @@ fun CourseBrushScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Button(
-                        onClick = { runBrush() },
-                        enabled = !running,
+                        onClick = { if (running) togglePause() else runBrush() },
+                        enabled = true,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text(if (running) "刷课中…" else "开始刷课", fontSize = 14.sp)
+                        Text(
+                            text = when {
+                                running && paused -> "继续"
+                                running -> "暂停"
+                                else -> "开始刷课"
+                            },
+                            fontSize = 14.sp,
+                        )
                     }
                 }
             }
@@ -332,28 +323,30 @@ fun CourseBrushScreen(
                 ) {
                     SmallTitle(text = "运行日志")
                     Spacer(Modifier.weight(1f))
-                    // 摘要 / 详细切换
+                    // Detail 切换（小号）
                     TextButton(
                         text = if (showDetail) "Summary" else "Detail",
                         onClick = { showDetail = !showDetail },
+                        modifier = Modifier.padding(0.dp),
                     )
                     // 清空
-                    IconButton(
+                    TextButton(
+                        text = "清空",
                         onClick = {
                             logFile.delete()
                             logText = ""
                             lastLen = 0
                         },
-                    ) {
-                        Text("清空", fontSize = 12.sp, color = MiuixTheme.colorScheme.primary)
-                    }
+                        modifier = Modifier.padding(0.dp),
+                    )
                 }
             }
             item(key = "log") {
-                // 日志框：背景 + 边框
+                // 固定高度日志框：内部滚动
                 Box(
                     Modifier
                         .fillMaxWidth()
+                        .height(300.dp)
                         .padding(vertical = 2.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.Black.copy(alpha = 0.06f))
@@ -362,6 +355,7 @@ fun CourseBrushScreen(
                             color = MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.25f),
                             shape = RoundedCornerShape(12.dp),
                         )
+                        .verticalScroll(logScroll)
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                 ) {
                     Text(
