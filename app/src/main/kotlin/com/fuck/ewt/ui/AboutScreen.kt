@@ -231,8 +231,7 @@ fun AboutScreen(
                             )
                             Spacer(Modifier.height(3.dp))
                             Text(
-                                text = "开启后扫描包含已完成的课时并强制重刷。
-适用场景：课时显示已完成但实际没看完、看课检测未通过、需要重新累计进度。",
+                                text = "开启后扫描包含已完成的课时并强制重刷。适用场景：课时显示已完成但实际没看完、看课检测未通过、需要重新累计进度。",
                                 fontSize = 12.sp,
                                 lineHeight = 16.sp,
                                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
@@ -264,6 +263,17 @@ fun AboutScreen(
                 )
             }
             item(key = "div_5") { SettingDivider() }
+
+            item(key = "update") {
+                ActionCard(
+                    title = "获取更新",
+                    subtitle = "前往 GitHub Releases 下载最新版本",
+                    onClick = {
+                        openUrl(context, "https://github.com/jj-m-j/ewt360-collection/releases")
+                    },
+                )
+            }
+            item(key = "div_6") { SettingDivider() }
 
             item(key = "logout") {
                 ActionCard(
