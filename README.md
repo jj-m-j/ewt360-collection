@@ -1,52 +1,32 @@
-# Fuck Ewt（去你妈的e网通）
+# ewt360-collection · EWT360 工具聚合
 
-一个基于 **MIUIX（Miuix / HyperOS 风格）** 的 Android 原生应用：登录升学 e 网通（EWT360）后，自动获取登录态，扫描试卷与题目，查询并展示标准答案、解析、知识点与图片；支持一键刷卷、WebView 刷课助手。
+> 一个 App，聚合多个 EWT360 开源项目的能力：**答案查询 + 一键刷卷 + 课程刷课**，全部打包进一个 MIUIX 风格的 Android 应用。
 
-> ⚠️ 本应用仅用于个人学习与查漏补缺，请遵守所在学校与 EWT360 平台的相关规定。
+本项目是**多个开源 EWT360 工具的聚合产物**：把社区里分散的答案脚本、刷卷脚本、刷课脚本的能力整合进一个原生 App，并加上统一的 MIUIX / HyperOS 风格界面。
+
+> ⚠️ 本项目仅用于个人学习与查漏补缺，请遵守所在学校与 EWT360 平台的相关规定。
 
 ---
+
+## 🧩 聚合了什么
+
+| 能力 | 来源项目 | 在本项目的形态 |
+|---|---|---|
+| 试卷扫描 / 答案查询 | [EWT-TOOL](https://github.com/ZZ0YY/EWT-TOOL) | 原生 Repository 实现（作业列表 → 题目 → 逐题答案） |
+| 一键刷今日 / 交卷自批 | [GetEWTAnswers](https://github.com/zhicheng233/GetEWTAnswers/) | 选日期批量刷卷：取答案 → 提交 → 交卷 → 自批 |
+| 课程刷课（竞态爆发） | [ewt360-brush](https://github.com/Zxxaq1478359473/ewt360-brush) | Chaquopy 内嵌 Python 脚本：N 路并行 + 竞态爆发 + WAF 冷却 |
+| MIUIX 风格 UI | [miuix](https://github.com/compose-miuix-ui/miuix) | 全套 Compose 组件：液态玻璃底栏、三条杠 Morph 弹层 |
 
 ## ✨ 功能
 
-- **WebView 登录 + 自动获取 token**
-  - 应用内打开 EWT360 官方登录页，用户正常登录
-  - 自动从 WebView Cookie（`CookieManager`）读取 `token` Cookie，支持 HttpOnly
-  - 读取后调用官方 `baseinfo` 接口校验有效性，**无需手动复制 token**
-  - token 使用 **Android Keystore（AES/GCM）加密**后本地保存，不落明文
-
-- **试卷列表（EWT-TOOL-main 逻辑）**
-  - 获取用户作业列表 → 按天扫描任务 → 过滤独立试卷（`contentTypeName` 含「试卷」）
-  - 按作业分组展示，支持下拉刷新
-
-- **粘贴链接直接查询**
-  - 支持 `web.ewt360.com/answer-pc/exam/answer?paperId=…&platform=…&bizCode=…`
-  - 自动解析 `paperId / platform / bizCode / homeworkId` 并查询对应试卷
-
-- **题目列表（兼容题组 / 非题组）**
-  - 题组接口 `getAnswerSheetSubGroup`（带 `groupName` 分组）
-  - 失败自动回退非题组接口 `answerSheetInfo`
-  - 统一保存：`questionId / questionNumber / questionType / groupName / cateId / subjective`
-
-- **答案获取与展示（ewt-getanwser.js 逻辑）**
-  - 逐题调用 `simple/question/analysis`，解析 `rightAnswer / analyse / knowledges / attachmentImages`
-  - 选择题答案字母、填空题/主观题文本、公式图与附件图均支持
-  - 并发限流（信号量 4），显示进度「正在获取答案 N / M」
-  - 失败题目支持单题重试与批量重试，单题失败不影响整体
-
-- **一键刷今日（opt.js 逻辑）**
-  - 滚轮选择日期，批量打开 → 取答案 → 提交 → 交卷 → 自批（`submitCorrected`）
-  - 客观题系统阅卷（`revision=false`），主观题满分自批（`revision=true`）
-
-- **课程刷课助手（EWT360-Helper 逻辑）**
-  - WebView 打开 site-study 学习页并注入刷课脚本：自动跳题 / 自动连播 / 自动过检 / 2倍速 / 刷课模式
-  - 原生刷课待抓包视频课接口后实现
-
-- **MIUIX / HyperOS 风格 UI**
-  - 基于 Miuix（`top.yukonga.miuix.kmp`）原生组件
-  - 三条杠筛选弹层：Circle → Capsule → Dialog 连续 Morph 动效
-  - 液态玻璃顶栏 / 悬浮底栏（Liquid Glass）
-
----
+- **WebView 登录 + 自动获取 token**：应用内登录 EWT360，自动从 Cookie 读取 token（支持 HttpOnly），Android Keystore 加密保存，无需手动复制
+- **试卷列表**：作业列表 → 按天扫描 → 过滤独立试卷，下拉刷新
+- **粘贴链接查询**：粘贴 `web.ewt360.com` 试卷链接直接查答案
+- **题目 / 答案 / 解析**：题组与非题组兼容，公式图（SVG）与附件图全支持，失败单题重试
+- **一键刷今日试卷**：滚轮选日期，批量取答案 → 提交 → 交卷 → 自批
+- **课程刷课**：扫描未刷课程 → 指定课程队列 → 并行刷课（并发路数 / QPS / 爆发可调）→ 暂停 / 继续
+- **强制刷**：课时显示已完成但实际没看完时，开关后强制重刷
+- **调试模式**：App / 试卷日志 + 刷课日志双通道，一键导出
 
 ## 🏗️ 技术架构
 
@@ -62,45 +42,31 @@ EWT API Client (OkHttp + kotlinx.serialization)
 EWT360 官方接口
 ```
 
-### 核心数据流
+刷课部分：Kotlin 通过 **Chaquopy** 内嵌 Python（`app/src/main/python/`），复用社区刷课脚本的成熟逻辑。
 
-```
-扫描试卷（EWT-TOOL-main 逻辑）
-  作业列表 getStudentHomeworkInfo → 日期统计 → pageHomeworkTasks / queryStudentLessonStudyGuideAndPractice
-  ↓
-打开试卷 initReport（205 作业 / 204 课后习题 / 201 查看态多候选）
-  ↓
-题目列表 getAnswerSheetSubGroup（题组）/ answerSheetInfo（非题组）
-  ↓
-逐题答案 simple/question/analysis
-  ↓
-提交 submitanswer（客观 revision=false / 主观 revision=true）→ submitpaper → submitCorrected
-```
-
-## 🛠️ 构建方法
-
-### 环境要求
-
-- JDK 21
-- Android SDK（`platforms;android-37`、`build-tools;37.0.0`）
-- Gradle 9.6.1（项目自带 wrapper）
-
-### 本地构建
+## 📦 构建
 
 ```bash
 git clone https://github.com/jj-m-j/ewt360-collection.git
 cd ewt360-collection
-
-# 仓库不包含 gradle-wrapper.jar（二进制文件由 CI 自动恢复），本地先补一次：
-gradle wrapper --gradle-version 9.6.1
-
-# 调试包（可安装）
+gradle wrapper --gradle-version 9.6.1   # 本地需补 wrapper jar
 ./gradlew assembleDebug
 ```
 
-## ⚙️ GitHub Actions
+GitHub Actions 已配置：push 到 `main` 自动构建并发布 nightly Release。
 
-仓库已配置 `.github/workflows/build.yml`：push / PR 到 `main` 触发 `assembleDebug` → 上传 APK Artifact；推送 `v*` 标签额外创建 Release。
+## ⬇️ 下载
+
+前往 [Releases](https://github.com/jj-m-j/ewt360-collection/releases) 下载最新 APK。
+
+## 🙏 致谢
+
+本项目聚合了以下开源项目，衷心感谢原作者：
+
+- [EWT-TOOL](https://github.com/ZZ0YY/EWT-TOOL) — 答案查询
+- [GetEWTAnswers](https://github.com/zhicheng233/GetEWTAnswers/) — 一键刷卷
+- [ewt360-brush](https://github.com/Zxxaq1478359473/ewt360-brush) — 课程刷课
+- [miuix](https://github.com/compose-miuix-ui/miuix) — MIUIX 风格 UI
 
 ## 📝 免责声明
 
