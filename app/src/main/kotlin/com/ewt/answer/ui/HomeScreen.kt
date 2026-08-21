@@ -46,7 +46,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
@@ -333,20 +332,15 @@ fun HomeScreen(
                     color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 )
                 Spacer(Modifier.height(14.dp))
-                Row(
+                Button(
+                    onClick = { vm.clearBrushResult() },
+                    colors = ButtonDefaults.buttonColors(
+                        color = MiuixTheme.colorScheme.primary,
+                        contentColor = MiuixTheme.colorScheme.onPrimary,
+                    ),
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Button(
-                        onClick = { vm.clearBrushResult() },
-                        colors = ButtonDefaults.buttonColors(
-                            color = MiuixTheme.colorScheme.primary,
-                            contentColor = MiuixTheme.colorScheme.onPrimary,
-                        ),
-                    ) {
-                        Text("知道了", fontSize = 14.sp)
-                    }
+                    Text("知道了", fontSize = 14.sp)
                 }
             }
         }
@@ -422,7 +416,7 @@ private fun FilterRow(
 
 private enum class FilterPane { Main, Date, Subject }
 
-/** 三条杠弹层：主面板矮、滚轮面板高，切换带大小动画 + 阴影 */
+/** 三条杠弹层：主面板矮、滚轮面板高，切换快（内容即时显示，高度 120ms 跟进） */
 @Composable
 private fun FilterPopupCard(
     exiting: Boolean,
@@ -444,11 +438,11 @@ private fun FilterPopupCard(
 
     val enter = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
-        if (!exiting) enter.animateTo(1f, tween(220, easing = LinearOutSlowInEasing))
+        if (!exiting) enter.animateTo(1f, tween(180, easing = LinearOutSlowInEasing))
     }
     LaunchedEffect(exiting) {
         if (exiting) {
-            enter.animateTo(0f, tween(140, easing = FastOutLinearInEasing))
+            enter.animateTo(0f, tween(120, easing = FastOutLinearInEasing))
             onExitFinished()
         }
     }
@@ -456,9 +450,8 @@ private fun FilterPopupCard(
 
     Card(
         modifier = Modifier
-            .shadow(12.dp, RoundedCornerShape(18.dp), clip = false)
             .width(200.dp)
-            .animateContentSize(tween(200))
+            .animateContentSize(tween(120))
             .graphicsLayer {
                 alpha = p
                 scaleX = 0.94f + 0.06f * p
@@ -471,8 +464,8 @@ private fun FilterPopupCard(
         AnimatedContent(
             targetState = pane,
             transitionSpec = {
-                (fadeIn(tween(180)) + slideInHorizontally(tween(200)) { it / 4 })
-                    .togetherWith(fadeOut(tween(120)) + slideOutHorizontally(tween(160)) { -it / 4 })
+                (fadeIn(tween(120)) + slideInHorizontally(tween(140)) { it / 4 })
+                    .togetherWith(fadeOut(tween(90)) + slideOutHorizontally(tween(110)) { -it / 4 })
             },
             label = "filter_pane",
         ) { p2 ->
@@ -722,7 +715,7 @@ private fun BrushTodayEntry(
     }
 }
 
-/** 刷今日：日期滚轮选择对话框（按钮一左一右 + 滚轮间距收紧） */
+/** 刷今日：日期滚轮选择对话框（按钮上下布局） */
 @Composable
 private fun BrushDateDialog(
     dateOptions: List<String>,
@@ -748,21 +741,22 @@ private fun BrushDateDialog(
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(16.dp))
-            Row(
+            // 上下布局：取消在上、开始在下
+            TextButton(
+                text = "取消",
+                onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+            )
+            Spacer(Modifier.height(6.dp))
+            Button(
+                onClick = { onStart(dateOptions[index]) },
+                colors = ButtonDefaults.buttonColors(
+                    color = MiuixTheme.colorScheme.primary,
+                    contentColor = MiuixTheme.colorScheme.onPrimary,
+                ),
+                modifier = Modifier.fillMaxWidth(),
             ) {
-                TextButton(text = "取消", onClick = onDismiss)
-                Button(
-                    onClick = { onStart(dateOptions[index]) },
-                    colors = ButtonDefaults.buttonColors(
-                        color = MiuixTheme.colorScheme.primary,
-                        contentColor = MiuixTheme.colorScheme.onPrimary,
-                    ),
-                ) {
-                    Text("开始", fontSize = 14.sp)
-                }
+                Text("开始", fontSize = 14.sp)
             }
         }
     }
