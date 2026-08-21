@@ -425,6 +425,13 @@ fun AboutPlaceholderScreen(onBack: () -> Unit) {
                     onClick = { openUrl(context, "https://github.com/compose-miuix-ui/miuix") },
                 )
             }
+            item {
+                CreditCard(
+                    name = "AndroidLiquidGlass",
+                    url = "https://github.com/Kyant0/AndroidLiquidGlass",
+                    onClick = { openUrl(context, "https://github.com/Kyant0/AndroidLiquidGlass") },
+                )
+            }
             // 本项目地址
             item {
                 Spacer(Modifier.height(4.dp))
