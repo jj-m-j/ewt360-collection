@@ -76,6 +76,8 @@ sealed class Screen {
     data object Debug : Screen()
     /** 关于（占位页，从设置页进入） */
     data object About : Screen()
+    /** 刷指定课程：选择未刷课程加入队列（从课程页进入） */
+    data object CoursePick : Screen()
     data class Questions(val paper: Paper) : Screen()
 }
 
@@ -84,7 +86,7 @@ private const val TAB_COURSE = 0
 private const val TAB_PAPERS = 1
 private const val TAB_SETTINGS = 2
 
-/** 弹窗底部操作栏：取消(次要) + 确认(小米蓝) 右对齐 —— 全应用统一 */
+/** 弹窗底部操作栏：取消在上、确认在下（纵向布局，全应用统一） */
 @Composable
 internal fun DialogActions(
     onDismiss: () -> Unit,
@@ -92,24 +94,24 @@ internal fun DialogActions(
     confirmText: String = "确认",
     dismissText: String = "取消",
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 14.dp),
-        horizontalArrangement = Arrangement.End,
-        verticalAlignment = Alignment.CenterVertically,
     ) {
         TextButton(
             text = dismissText,
             onClick = onDismiss,
+            modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.width(10.dp))
+        Spacer(Modifier.height(6.dp))
         Button(
             onClick = onConfirm,
             colors = ButtonDefaults.buttonColors(
                 color = MiuixTheme.colorScheme.primary,
                 contentColor = MiuixTheme.colorScheme.onPrimary,
             ),
+            modifier = Modifier.fillMaxWidth(),
         ) {
             Text(confirmText, fontSize = 14.sp)
         }
@@ -327,7 +329,8 @@ fun AppRoot() {
                             targetState is Screen.Questions ||
                                 targetState is Screen.LinkQuery ||
                                 targetState is Screen.Debug ||
-                                targetState is Screen.About -> {
+                                targetState is Screen.About ||
+                                targetState is Screen.CoursePick -> {
                                 (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
                                     .togetherWith(fadeOut(tween(200)))
                             }
@@ -439,6 +442,7 @@ private fun RenderScreen(
             onOpenLinkQuery = { navigateTo(Screen.LinkQuery) },
             onOpenDebug = { navigateTo(Screen.Debug) },
             onOpenAbout = { navigateTo(Screen.About) },
+            onOpenCoursePick = { navigateTo(Screen.CoursePick) },
             onLogout = {
                 repo.clearToken()
                 navigateTo(Screen.Login)
@@ -452,6 +456,9 @@ private fun RenderScreen(
             onBack = onBack,
         )
         Screen.About -> AboutPlaceholderScreen(
+            onBack = onBack,
+        )
+        Screen.CoursePick -> CoursePickScreen(
             onBack = onBack,
         )
         is Screen.Questions -> QuestionsScreen(
@@ -478,6 +485,7 @@ private fun MainLayer(
     onOpenLinkQuery: () -> Unit,
     onOpenDebug: () -> Unit,
     onOpenAbout: () -> Unit,
+    onOpenCoursePick: () -> Unit,
     onLogout: () -> Unit,
 ) {
     // 玻璃底栏的反射源：捕获整个 Tab 内容（列表滚动画面；顶栏 blur 在页面内部用独立 backdrop，避免成环）
@@ -505,6 +513,7 @@ private fun MainLayer(
             when (t) {
                 TAB_COURSE -> CourseBrushScreen(
                     settings = brushSettings,
+                    onOpenCoursePick = onOpenCoursePick,
                 )
                 TAB_PAPERS -> HomeScreen(
                     userInfo = userInfo,
