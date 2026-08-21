@@ -178,8 +178,8 @@ fun HomeScreen(
         PullToRefresh(
             isRefreshing = refreshing,
             onRefresh = { vm.load(force = true) },
-            // 原生刷新指示器下移到扫描作业状态文字上方一点（contentPadding 控制偏移）
-            contentPadding = PaddingValues(top = 220.dp),
+            // 原生刷新指示器：置顶居中，不被任何组件遮挡（位于「试卷列表」大标题上方）
+            contentPadding = PaddingValues(top = 56.dp),
         ) {
             LazyColumn(
                 state = listState,
