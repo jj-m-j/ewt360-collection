@@ -1,6 +1,5 @@
 package com.fuck.ewt.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,12 +14,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -194,33 +190,6 @@ fun AnswerDetailCard(
                 AttachmentImageList(a.attachmentImages)
             }
 
-            // 调试：查看接口返回的 JSON 原始数据（图片等提取异常时排查用）
-            if (a.rawJson.isNotBlank()) {
-                var showRaw by remember { mutableStateOf(false) }
-                val clipboard = LocalClipboardManager.current
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    TextButton(
-                        text = if (showRaw) "收起 JSON 原始数据" else "查看 JSON 原始数据",
-                        onClick = { showRaw = !showRaw },
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(
-                        text = "复制",
-                        onClick = { clipboard.setText(AnnotatedString(a.rawJson)) },
-                    )
-                }
-                AnimatedVisibility(visible = showRaw) {
-                    Text(
-                        text = a.rawJson,
-                        fontSize = 10.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                }
-            }
         }
     }
 }
