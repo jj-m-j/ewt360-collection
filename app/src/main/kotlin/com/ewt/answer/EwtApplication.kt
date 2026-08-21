@@ -6,6 +6,7 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.svg.SvgDecoder
 import com.ewt.answer.data.AppContainer
 import com.ewt.answer.data.DebugLog
 import okhttp3.Cookie
@@ -58,9 +59,12 @@ class EwtApplication : Application(), SingletonImageLoader.Factory {
             .build()
     }
 
-    /** Coil3 图片加载器：使用带默认头 + Cookie 的 OkHttp 网络加载 */
+    /** Coil3 图片加载器：使用带默认头 + Cookie 的 OkHttp 网络加载（含 SVG 公式图解码） */
     override fun newImageLoader(context: PlatformContext): ImageLoader =
         ImageLoader.Builder(context)
-            .components { add(OkHttpNetworkFetcherFactory(callFactory = { imageClient })) }
+            .components {
+                add(OkHttpNetworkFetcherFactory(callFactory = { imageClient }))
+                add(SvgDecoder.Factory())
+            }
             .build()
 }
