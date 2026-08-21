@@ -70,7 +70,8 @@ class QuestionsViewModel(
         viewModelScope.launch {
             _uiState.value = UiState.Loading
             try {
-                val s = repo.openPaper(paper)
+                // 查看答案：用 201 查看态报告（forView=true），空交解锁不污染作业成绩
+                val s = repo.openPaper(paper, forView = true)
                 session = s
                 val qs = repo.fetchQuestions(s)
                 _uiState.value = UiState.Ready(s, qs)
