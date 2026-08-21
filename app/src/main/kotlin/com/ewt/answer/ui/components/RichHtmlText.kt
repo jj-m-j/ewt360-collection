@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.TextUnit
@@ -21,7 +22,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /**
  * 渲染解析 HTML：文本 + 公式图 / 插图分段展示。
  * 图片走全局 ImageLoader（EwtApplication 已配 UA/Referer 头），并统一 https + 转义清理。
- * Wiris 公式 SVG 固定高度（行内公式大小），普通插图保持原尺寸自适应。
+ * Wiris 公式 SVG 高度与文字大小对齐（行内公式效果），普通插图保持原尺寸自适应。
  */
 @Composable
 fun RichHtmlText(
@@ -44,7 +45,10 @@ fun RichHtmlText(
                     )
                 }
                 is HtmlCleaner.Segment.Image -> {
-                    EwtImage(url = seg.url)
+                    EwtImage(
+                        url = seg.url,
+                        formulaHeight = (fontSize.value * 1.1f + 4f).dp,
+                    )
                 }
             }
         }
@@ -64,10 +68,13 @@ fun AttachmentImageList(urls: List<String>, modifier: Modifier = Modifier) {
 
 /**
  * EWT 图片：https 规范化 + 全局 ImageLoader 头（UA/Referer）加载。
- * Wiris 公式 SVG：固定高度 28dp、宽度自适应（大小统一，不再拉伸）；普通插图：fillMaxWidth。
+ * Wiris 公式 SVG：高度随文字（行内公式与文字同高）；普通插图：fillMaxWidth。
  */
 @Composable
-private fun EwtImage(url: String) {
+private fun EwtImage(
+    url: String,
+    formulaHeight: androidx.compose.ui.unit.Dp = 30.dp,
+) {
     val normalized = normalizeEwtImageUrl(url)
     val isFormula = normalized.contains("Wirisformula") || normalized.contains("wiris")
     if (isFormula) {
@@ -77,7 +84,7 @@ private fun EwtImage(url: String) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 2.dp)
-                .height(28.dp),
+                .height(formulaHeight),
             contentScale = ContentScale.Fit,
         )
     } else {

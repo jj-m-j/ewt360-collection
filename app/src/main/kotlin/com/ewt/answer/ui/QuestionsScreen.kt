@@ -188,7 +188,7 @@ fun QuestionsScreen(
         }
     }
 
-    // 提交确认对话框（取消 + 小米蓝提交）
+    // 提交确认对话框（取消在上、提交在下）
     if (showSubmitDialog) {
         WindowDialog(
             show = true,
@@ -203,27 +203,24 @@ fun QuestionsScreen(
                     color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 )
                 Spacer(Modifier.height(14.dp))
-                Row(
+                TextButton(
+                    text = "取消",
+                    onClick = { showSubmitDialog = false },
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
+                )
+                Spacer(Modifier.height(6.dp))
+                Button(
+                    onClick = {
+                        showSubmitDialog = false
+                        vm.submitAnswers()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        color = MiuixTheme.colorScheme.primary,
+                        contentColor = MiuixTheme.colorScheme.onPrimary,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
-                    TextButton(
-                        text = "取消",
-                        onClick = { showSubmitDialog = false },
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Button(
-                        onClick = {
-                            showSubmitDialog = false
-                            vm.submitAnswers()
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            color = MiuixTheme.colorScheme.primary,
-                            contentColor = MiuixTheme.colorScheme.onPrimary,
-                        ),
-                    ) {
-                        Text("提交", fontSize = 14.sp)
-                    }
+                    Text("提交", fontSize = 14.sp)
                 }
             }
         }
