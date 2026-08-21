@@ -29,5 +29,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ewttest"
+rootProject.name = "ewt360-collection"
 include(":app")

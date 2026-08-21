@@ -88,8 +88,8 @@ EWT360 官方接口
 ### 本地构建
 
 ```bash
-git clone https://github.com/jj-m-j/ewttest.git
-cd ewttest
+git clone https://github.com/jj-m-j/ewt360-collection.git
+cd ewt360-collection
 
 # 仓库不包含 gradle-wrapper.jar（二进制文件由 CI 自动恢复），本地先补一次：
 gradle wrapper --gradle-version 9.6.1

@@ -11,9 +11,9 @@ android {
             minorApiLevel = 0
         }
     }
-    namespace = "com.ewt.answer"
+    namespace = "com.fuck.ewt"
     defaultConfig {
-        applicationId = "com.ewt.answer"
+        applicationId = "com.fuck.ewt"
         minSdk = 24
         targetSdk = 37
         // 构建号 = 当前是第几个成功的 build（workflow 通过 BUILD_NUMBER 传入）
