@@ -1,6 +1,7 @@
 package com.ewt.answer.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.fadeIn
@@ -82,7 +83,7 @@ import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowDialog
 
-/** 筛选图标（三条横线，material filter_list） */
+/** 筛选图标（三条横线，与课程页 ☰ 一致的 24dp filter_list） */
 private val FilterListIcon: ImageVector by lazy {
     ImageVector.Builder(
         name = "FilterList",
@@ -181,7 +182,6 @@ fun HomeScreen(
         PullToRefresh(
             isRefreshing = refreshing,
             onRefresh = { vm.load(force = true) },
-            // 原生刷新指示器：置顶居中，不被任何组件遮挡（位于「试卷列表」大标题上方）
             contentPadding = PaddingValues(top = 56.dp),
         ) {
             LazyColumn(
@@ -214,7 +214,7 @@ fun HomeScreen(
                         )
                     }
                 }
-                // 信息结构：大标题 → 搜索框 → 粘贴链接 → 一键刷今日 → 三条杠 → 列表
+                // 信息结构：大标题 → 搜索框 → 粘贴链接 → 一键刷今日 → 列表
                 item(key = "search") {
                     TextField(
                         state = searchState,
@@ -235,7 +235,7 @@ fun HomeScreen(
                         onTogglePause = { vm.toggleBrushPause() },
                     )
                 }
-                // 三条杠：一键刷今日下边靠右（弹层从按钮旁 Morph 生长）
+                // 三条杠：与第一个日期分组标题同排（右侧），弹层从按钮旁生长
                 item(key = "filter_row") {
                     FilterRow(
                         dateFilter = dateFilter,
@@ -253,7 +253,6 @@ fun HomeScreen(
 
                 when (val state = uiState) {
                     HomeViewModel.UiState.Loading -> {
-                        // 扫描时仅显示状态文字（刷新时扫描作业 x/x）
                         if (statusText.isNotBlank()) {
                             item(key = "loading_text") {
                                 Text(
@@ -301,7 +300,6 @@ fun HomeScreen(
                                         SmallTitle(
                                             text = if (date == "其他") "未分类" else date,
                                         )
-                                        // 分割线：日期标题下
                                         Box(
                                             Modifier
                                                 .fillMaxWidth()
@@ -356,7 +354,7 @@ fun HomeScreen(
                 Spacer(Modifier.height(14.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Button(
@@ -374,7 +372,7 @@ fun HomeScreen(
     }
 }
 
-// ── 三条杠 + 锚点弹层（Circle → Capsule → Dialog 连续 Morph） ───
+// ── 三条杠 + 锚点弹层 ───
 
 @Composable
 private fun FilterRow(
@@ -387,7 +385,6 @@ private fun FilterRow(
     onClear: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    // 阶段一：按钮 Press 反馈（极轻微压缩 0.97，极短）
     val btnScale = remember { Animatable(1f) }
     var popupVisible by remember { mutableStateOf(false) }
     var popupExiting by remember { mutableStateOf(false) }
@@ -450,7 +447,7 @@ private fun FilterRow(
 
 private enum class FilterPane { Main, Date, Subject }
 
-/** 三条杠弹层 —— miuix 原生风格（Popup + Card，淡入缩放 + 阴影） */
+/** 三条杠弹层：主面板矮、滚轮面板高，切换带大小动画 + 阴影 */
 @Composable
 private fun FilterPopupCard(
     exiting: Boolean,
@@ -467,7 +464,6 @@ private fun FilterPopupCard(
     var draftDate by remember(dateFilter) { mutableStateOf(dateFilter) }
     var draftSubject by remember(subjectFilter) { mutableStateOf(subjectFilter) }
 
-    // null = 全部
     val dateOptions = remember(dates) { listOf<String?>(null) + dates }
     val subjectOptions = remember(subjects) { listOf<String?>(null) + subjects }
 
@@ -487,7 +483,7 @@ private fun FilterPopupCard(
         modifier = Modifier
             .shadow(12.dp, RoundedCornerShape(18.dp), clip = false)
             .width(200.dp)
-            .height(236.dp)
+            .animateContentSize(tween(200))
             .graphicsLayer {
                 alpha = p
                 scaleX = 0.94f + 0.06f * p
@@ -505,7 +501,7 @@ private fun FilterPopupCard(
             },
             label = "filter_pane",
         ) { p2 ->
-            Column(Modifier.fillMaxSize()) {
+            Column {
                 when (p2) {
                     FilterPane.Main -> {
                         Text(
@@ -525,12 +521,20 @@ private fun FilterPopupCard(
                             value = subjectFilter ?: "全部",
                             onClick = { pane = FilterPane.Subject },
                         )
-                        Spacer(Modifier.weight(1f))
+                        Spacer(Modifier.height(4.dp))
+                        // 清除按钮：小号文字按钮
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.End,
                         ) {
-                            TextButton(text = "清除", onClick = onClear)
+                            TextButton(
+                                text = "清除",
+                                onClick = onClear,
+                                fontSize = 12.sp,
+                                colors = ButtonDefaults.textButtonColors(
+                                    textColor = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                ),
+                            )
                         }
                     }
                     FilterPane.Date -> {
@@ -544,10 +548,10 @@ private fun FilterPopupCard(
                             textStyle = MiuixTheme.textStyles.body1,
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        Spacer(Modifier.weight(1f))
+                        Spacer(Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             TextButton(
@@ -557,7 +561,6 @@ private fun FilterPopupCard(
                                     pane = FilterPane.Main
                                 },
                             )
-                            Spacer(Modifier.width(8.dp))
                             Button(
                                 onClick = {
                                     onDateSelect(draftDate)
@@ -583,10 +586,10 @@ private fun FilterPopupCard(
                             textStyle = MiuixTheme.textStyles.body1,
                             modifier = Modifier.fillMaxWidth(),
                         )
-                        Spacer(Modifier.weight(1f))
+                        Spacer(Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End,
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             TextButton(
@@ -596,7 +599,6 @@ private fun FilterPopupCard(
                                     pane = FilterPane.Main
                                 },
                             )
-                            Spacer(Modifier.width(8.dp))
                             Button(
                                 onClick = {
                                     onSubjectSelect(draftSubject)
@@ -723,7 +725,6 @@ private fun BrushTodayEntry(
             }
             if (brushing) {
                 Spacer(Modifier.width(8.dp))
-                // 暂停/继续按钮
                 Button(
                     onClick = onTogglePause,
                     colors = ButtonDefaults.buttonColors(
@@ -744,7 +745,7 @@ private fun BrushTodayEntry(
     }
 }
 
-/** 刷今日：日期滚轮选择对话框 */
+/** 刷今日：日期滚轮选择对话框（按钮一左一右） */
 @Composable
 private fun BrushDateDialog(
     dateOptions: List<String>,
@@ -771,10 +772,9 @@ private fun BrushDateDialog(
             Spacer(Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(24.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Spacer(Modifier.weight(1f))
                 TextButton(text = "取消", onClick = onDismiss)
                 Button(
                     onClick = { onStart(dateOptions[index]) },
@@ -819,7 +819,6 @@ private fun PaperRow(
                     color = MiuixTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.height(4.dp))
-                // 课程信息（作业名） · 学科 · 题数
                 val countText = count?.takeIf { it > 0 }?.let { "共 $it 题" }
                     ?: paper.questionCount.takeIf { it != "?" }?.let { "共 $it 题" }
                     ?: ""
