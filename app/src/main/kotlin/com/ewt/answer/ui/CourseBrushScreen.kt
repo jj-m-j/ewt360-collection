@@ -6,7 +6,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -89,15 +89,16 @@ fun CourseBrushScreen(
     val listState = rememberLazyListState()
     val logScroll = rememberScrollState()
 
-    var logText by remember { mutableStateOf("") }
+    // 状态提升到全局（跨 Tab 切换保持）
+    var logText by remember { mutableStateOf(CourseState.logText) }
     var running by remember { mutableStateOf(false) }
     var paused by remember { mutableStateOf(false) }
     var dryRun by remember { mutableStateOf(false) }
-    var showDetail by remember { mutableStateOf(false) }
+    var showDetail by remember { mutableStateOf(CourseState.showDetail) }
     var showLogMenu by remember { mutableStateOf(false) }
-    var tasks by remember { mutableStateOf<List<BrushTask>?>(null) }
+    var tasks by remember { mutableStateOf<List<BrushTask>?>(CourseState.tasks) }
     var scanning by remember { mutableStateOf(false) }
-    var selectedLesson by remember { mutableStateOf<String?>(null) }
+    var selectedLesson by remember { mutableStateOf<String?>(CourseState.selectedLesson) }
     val pauseFile = remember { File(context.filesDir, "pause.flag") }
 
     // 自动获取主 App 已登录 token（不显示明文）
@@ -136,6 +137,12 @@ fun CourseBrushScreen(
     LaunchedEffect(logText, showDetail) {
         logScroll.scrollTo(logScroll.maxValue)
     }
+
+    // 同步状态到全局（跨 Tab 保持）
+    LaunchedEffect(logText) { CourseState.logText = logText }
+    LaunchedEffect(tasks) { CourseState.tasks = tasks }
+    LaunchedEffect(selectedLesson) { CourseState.selectedLesson = selectedLesson }
+    LaunchedEffect(showDetail) { CourseState.showDetail = showDetail }
 
     fun runPy(fn: String, task: BrushTask? = null) {
         if (running) return
@@ -433,7 +440,7 @@ fun CourseBrushScreen(
                 }
             }
             item(key = "log") {
-                // 固定高度日志框：内部滚动
+                // 固定高度日志框：内部滚动（无边框，仅底色）
                 Box(
                     Modifier
                         .fillMaxWidth()
@@ -441,11 +448,6 @@ fun CourseBrushScreen(
                         .padding(vertical = 2.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(Color.Black.copy(alpha = 0.06f))
-                        .border(
-                            width = 1.dp,
-                            color = MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.25f),
-                            shape = RoundedCornerShape(12.dp),
-                        )
                         .verticalScroll(logScroll)
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                 ) {
@@ -465,7 +467,7 @@ fun CourseBrushScreen(
     }
 }
 
-/** 日志菜单：三条杠弹出（Detail 切换 / 清空），miuix 风格淡入缩放 + 阴影 */
+/** 日志菜单：三条杠弹出（Detail 切换 / 清空），纯文字 + 分割线 */
 @Composable
 private fun LogMenuPopup(
     showDetail: Boolean,
@@ -493,20 +495,45 @@ private fun LogMenuPopup(
                     scaleY = 0.94f + 0.06f * p
                 },
             cornerRadius = 16.dp,
-            insideMargin = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+            insideMargin = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
         ) {
             Column {
-                TextButton(
-                    text = if (showDetail) "Summary" else "Detail",
-                    onClick = onDetail,
-                    modifier = Modifier.fillMaxWidth(),
+                MenuItem(text = if (showDetail) "Summary" else "Detail", onClick = onDetail)
+                // 分割线
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(0.5.dp)
+                        .background(MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.2f)),
                 )
-                TextButton(
-                    text = "清空",
-                    onClick = onClear,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                MenuItem(text = "清空", onClick = onClear)
             }
         }
     }
+}
+
+/** 菜单项：文字 + 点击涟漪，无按钮背景 */
+@Composable
+private fun MenuItem(text: String, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = text,
+            fontSize = 13.sp,
+            color = MiuixTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+/** 课程页跨 Tab 保持的状态（AppRoot 不销毁，组件重建时恢复） */
+object CourseState {
+    var logText: String = ""
+    var tasks: List<BrushTask>? = null
+    var selectedLesson: String? = null
+    var showDetail: Boolean = false
 }
