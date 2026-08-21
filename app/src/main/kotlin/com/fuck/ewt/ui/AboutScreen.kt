@@ -212,40 +212,6 @@ fun AboutScreen(
             }
             item(key = "div_3") { SettingDivider() }
 
-            // ── 强制刷开关 ──
-            item(key = "force_all") {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                text = "强制刷（含已完成课时）",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = MiuixTheme.colorScheme.onSurface,
-                            )
-                            Spacer(Modifier.height(3.dp))
-                            Text(
-                                text = "开启后扫描包含已完成的课时并强制重刷。适用场景：课时显示已完成但实际没看完、看课检测未通过、需要重新累计进度。",
-                                fontSize = 12.sp,
-                                lineHeight = 16.sp,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            )
-                        }
-                        Switch(
-                            checked = brushSettings.forceAll,
-                            onCheckedChange = { onBrushSettingsChange(brushSettings.copy(forceAll = it)) },
-                        )
-                    }
-                }
-            }
-            item(key = "div_3b") { SettingDivider() }
-
             item(key = "about") {
                 ActionCard(
                     title = "致谢",

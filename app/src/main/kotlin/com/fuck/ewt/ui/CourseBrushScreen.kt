@@ -165,12 +165,12 @@ fun CourseBrushScreen(
                 val ret: Int = if (!token.isNullOrBlank()) {
                     mod.callAttr(
                         "run_brush_token", logPath, token, "", "", "", lessonFilter,
-                        settings.concurrency, settings.qps, false, settings.burst, settings.forceAll,
+                        settings.concurrency, settings.qps, false, settings.burst,
                     ).toInt()
                 } else {
                     mod.callAttr(
                         "run_brush", logPath, "", "", "",
-                        settings.concurrency, settings.qps, false, settings.burst, settings.forceAll,
+                        settings.concurrency, settings.qps, false, settings.burst,
                     ).toInt()
                 }
                 handler.post { logText += "\n==== 队列刷结束，返回码 $ret ====\n" }
@@ -199,12 +199,12 @@ fun CourseBrushScreen(
                 val ret: Int = if (!token.isNullOrBlank()) {
                     mod.callAttr(
                         "run_brush_token", logPath, token, "", "", "", "",
-                        settings.concurrency, settings.qps, false, settings.burst, settings.forceAll,
+                        settings.concurrency, settings.qps, false, settings.burst,
                     ).toInt()
                 } else {
                     mod.callAttr(
                         "run_brush", logPath, "", "", "",
-                        settings.concurrency, settings.qps, false, settings.burst, settings.forceAll,
+                        settings.concurrency, settings.qps, false, settings.burst,
                     ).toInt()
                 }
                 handler.post { logText += "\n==== 结束，返回码 $ret ====\n" }
@@ -280,7 +280,7 @@ fun CourseBrushScreen(
                     )
                 }
             }
-            // 登录态
+            // 登录态 + 参数摘要（已登录 右侧 并排显示）
             item(key = "token_status") {
                 Card(
                     modifier = Modifier
@@ -288,11 +288,22 @@ fun CourseBrushScreen(
                         .padding(vertical = 2.dp),
                     insideMargin = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                 ) {
-                    Text(
-                        text = if (hasToken) "已登录" else "未检测到登录 token，请先在「试卷」页登录",
-                        fontSize = 12.sp,
-                        color = if (hasToken) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.error,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = if (hasToken) "已登录" else "未检测到登录 token",
+                            fontSize = 12.sp,
+                            color = if (hasToken) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.error,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Text(
+                            text = "并行 ${settings.concurrency} · QPS ${settings.qps} · 爆发 ${settings.burst}",
+                            fontSize = 12.sp,
+                            color = MiuixTheme.colorScheme.onSurfaceSecondary,
+                        )
+                    }
                 }
             }
             // 刷指定课程入口（全宽）
@@ -337,21 +348,6 @@ fun CourseBrushScreen(
                             )
                         }
                     }
-                }
-            }
-            // 参数摘要（只读）
-            item(key = "params_summary") {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 2.dp),
-                    insideMargin = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                ) {
-                    Text(
-                        text = "并行 ${settings.concurrency} · QPS ${settings.qps} · 爆发 ${settings.burst}（在「设置」页修改）",
-                        fontSize = 12.sp,
-                        color = MiuixTheme.colorScheme.onSurfaceSecondary,
-                    )
                 }
             }
             item(key = "actions") {
