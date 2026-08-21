@@ -47,6 +47,8 @@ import java.io.File
 fun DebugScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     var appLog by remember { mutableStateOf(DebugLog.readLog()) }
+    // 记录日志开关：用 Compose state 驱动，点击立即切换并持久化
+    var logEnabled by remember { mutableStateOf(DebugLog.enabled) }
 
     Scaffold(
         topBar = {
@@ -87,8 +89,11 @@ fun DebugScreen(onBack: () -> Unit) {
                         modifier = Modifier.weight(1f),
                     )
                     top.yukonga.miuix.kmp.basic.Switch(
-                        checked = DebugLog.enabled,
-                        onCheckedChange = { DebugLog.setEnabled(context, it) },
+                        checked = logEnabled,
+                        onCheckedChange = {
+                            logEnabled = it
+                            DebugLog.setEnabled(context, it)
+                        },
                     )
                 }
             }

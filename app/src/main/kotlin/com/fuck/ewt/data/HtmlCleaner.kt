@@ -121,6 +121,45 @@ object HtmlCleaner {
         t = t.replace("&lt;", "<").replace("&gt;", ">")
         t = t.replace("&#39;", "'").replace("&quot;", "\"")
         t = t.replace("&hellip;", "\u2026")
+        // 数学/符号实体（答案解析里常见，缺失会原样显示成 &xxx;）
+        t = t.replace("&there4;", "\u2234")   // ∴ 所以
+        t = t.replace("&because;", "\u2235")  // ∵ 因为
+        t = t.replace("&ne;", "\u2260")       // ≠
+        t = t.replace("&le;", "\u2264")       // ≤
+        t = t.replace("&ge;", "\u2265")       // ≥
+        t = t.replace("&plusmn;", "\u00B1")   // ±
+        t = t.replace("&minus;", "\u2212")    // −
+        t = t.replace("&times;", "\u00D7")    // ×
+        t = t.replace("&divide;", "\u00F7")   // ÷
+        t = t.replace("&radic;", "\u221A")    // √
+        t = t.replace("&sum;", "\u2211")      // ∑
+        t = t.replace("&infin;", "\u221E")    // ∞
+        t = t.replace("&deg;", "\u00B0")      // °
+        t = t.replace("&Prime;", "\u2033")    // ″
+        t = t.replace("&prime;", "\u2032")    // ′
+        t = t.replace("&ang;", "\u2220")      // ∠
+        t = t.replace("&Delta;", "\u0394")    // Δ
+        t = t.replace("&pi;", "\u03C0")       // π
+        t = t.replace("&alpha;", "\u03B1")    // α
+        t = t.replace("&beta;", "\u03B2")     // β
+        t = t.replace("&gamma;", "\u03B3")    // γ
+        t = t.replace("&theta;", "\u03B8")    // θ
+        t = t.replace("&lambda;", "\u03BB")   // λ
+        t = t.replace("&mu;", "\u03BC")       // μ
+        t = t.replace("&perp;", "\u22A5")     // ⊥
+        t = t.replace("&parallel;", "\u2225") // ∥
+        t = t.replace("&sim;", "\u223C")      // ∼
+        t = t.replace("&rarr;", "\u2192")     // →
+        t = t.replace("&larr;", "\u2190")     // ←
+        t = t.replace("&harr;", "\u2194")     // ↔
+        t = t.replace("&in;", "\u2208")       // ∈
+        t = t.replace("&cup;", "\u222A")      // ∪
+        t = t.replace("&cap;", "\u2229")      // ∩
+        t = t.replace("&empty;", "\u2205")    // ∅
+        t = t.replace("&forall;", "\u2200")   // ∀
+        t = t.replace("&exist;", "\u2203")    // ∃
+        t = t.replace("&prop;", "\u221D")     // ∝
+        t = t.replace("&infin;", "\u221E")    // (已在上方)
         return t
     }
 }
