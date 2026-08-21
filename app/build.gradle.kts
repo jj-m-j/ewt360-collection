@@ -16,8 +16,10 @@ android {
         applicationId = "com.ewt.answer"
         minSdk = 24
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0.0"
+        // 构建号 = 当前是第几个成功的 build（workflow 通过 BUILD_NUMBER 传入）
+        val buildNumber = System.getenv("BUILD_NUMBER") ?: "1"
+        versionCode = buildNumber.toIntOrNull() ?: 1
+        versionName = "build ${buildNumber}"
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
         }
