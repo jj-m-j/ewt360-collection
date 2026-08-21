@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +45,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
@@ -292,9 +294,19 @@ fun HomeScreen(
                         } else {
                             dateGroups.forEach { (date, papers) ->
                                 item(key = "date_$date") {
-                                    SmallTitle(
-                                        text = if (date == "其他") "未分类" else date,
-                                    )
+                                    Column {
+                                        SmallTitle(
+                                            text = if (date == "其他") "未分类" else date,
+                                        )
+                                        // 分割线：日期标题下
+                                        Box(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .height(0.5.dp)
+                                                .padding(vertical = 6.dp)
+                                                .background(MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.15f)),
+                                        )
+                                    }
                                 }
                                 items(papers, key = { it.paperId }) { paper ->
                                     PaperRow(
@@ -435,7 +447,7 @@ private fun FilterRow(
 
 private enum class FilterPane { Main, Date, Subject }
 
-/** 三条杠弹层 —— miuix 原生风格（Popup + Card，淡入缩放） */
+/** 三条杠弹层 —— miuix 原生风格（Popup + Card，淡入缩放 + 阴影） */
 @Composable
 private fun FilterPopupCard(
     exiting: Boolean,
@@ -470,16 +482,17 @@ private fun FilterPopupCard(
 
     Card(
         modifier = Modifier
-            .width(240.dp)
-            .height(272.dp)
+            .shadow(12.dp, RoundedCornerShape(18.dp), clip = false)
+            .width(200.dp)
+            .height(236.dp)
             .graphicsLayer {
                 alpha = p
                 scaleX = 0.94f + 0.06f * p
                 scaleY = 0.94f + 0.06f * p
                 transformOrigin = TransformOrigin(1f, 0f)
             },
-        cornerRadius = 20.dp,
-        insideMargin = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+        cornerRadius = 18.dp,
+        insideMargin = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
     ) {
         AnimatedContent(
             targetState = pane,
@@ -494,11 +507,11 @@ private fun FilterPopupCard(
                     FilterPane.Main -> {
                         Text(
                             text = "筛选",
-                            fontSize = 14.sp,
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
                             color = MiuixTheme.colorScheme.onSurface,
                         )
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(2.dp))
                         FilterOptionRow(
                             label = "日期",
                             value = dateFilter ?: "全部",
@@ -617,7 +630,7 @@ private fun PickerHeader(title: String, onBack: () -> Unit) {
         }
         Text(
             text = title,
-            fontSize = 15.sp,
+            fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             color = MiuixTheme.colorScheme.onSurface,
         )
@@ -629,8 +642,8 @@ private fun FilterOptionRow(label: String, value: String, onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp),
-        insideMargin = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
+            .padding(vertical = 2.dp),
+        insideMargin = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         onClick = onClick,
     ) {
         Row(
@@ -639,16 +652,16 @@ private fun FilterOptionRow(label: String, value: String, onClick: () -> Unit) {
         ) {
             Text(
                 text = label,
-                fontSize = 14.sp,
+                fontSize = 13.sp,
                 color = MiuixTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.weight(1f))
             Text(
                 text = value,
-                fontSize = 13.sp,
+                fontSize = 12.sp,
                 color = MiuixTheme.colorScheme.primary,
             )
-            Spacer(Modifier.width(8.dp))
+            Spacer(Modifier.width(6.dp))
             Icon(
                 imageVector = MiuixIcons.Basic.ArrowRight,
                 contentDescription = null,
@@ -714,32 +727,27 @@ private fun BrushDateDialog(
     var index by remember { mutableIntStateOf(initialIndex.coerceIn(0, dateOptions.lastIndex)) }
     WindowDialog(
         show = true,
-        title = "一键刷今日试卷",
-        summary = "选择要刷的日期",
+        title = "选择要刷的日期",
+        summary = "",
         onDismissRequest = onDismiss,
     ) {
         Column {
-            Text(
-                text = "滚动选择日期，确认后开始批量刷卷（自动获取答案 → 提交交卷 → 自批）",
-                fontSize = 12.sp,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-            Spacer(Modifier.height(8.dp))
             NumberPicker(
                 value = index,
                 onValueChange = { index = it },
                 range = 0..dateOptions.lastIndex,
                 label = { dateOptions[it] },
+                textStyle = MiuixTheme.textStyles.body1,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                Spacer(Modifier.weight(1f))
                 TextButton(text = "取消", onClick = onDismiss)
-                Spacer(Modifier.width(10.dp))
                 Button(
                     onClick = { onStart(dateOptions[index]) },
                     colors = ButtonDefaults.buttonColors(
@@ -747,7 +755,7 @@ private fun BrushDateDialog(
                         contentColor = MiuixTheme.colorScheme.onPrimary,
                     ),
                 ) {
-                    Text("开始刷卷", fontSize = 14.sp)
+                    Text("开始", fontSize = 14.sp)
                 }
             }
         }
@@ -765,8 +773,8 @@ private fun PaperRow(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 3.dp),
-        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+            .padding(vertical = 2.dp),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         onClick = onClick,
     ) {
         Row(
@@ -818,8 +826,8 @@ private fun LinkQueryEntry(onClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+            .padding(vertical = 4.dp),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 13.dp),
         onClick = onClick,
     ) {
         Row(
@@ -854,7 +862,7 @@ private fun EmptyHint(message: String) {
     Box(
         Modifier
             .fillMaxWidth()
-            .padding(vertical = 80.dp),
+            .padding(vertical = 60.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
