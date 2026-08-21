@@ -14,7 +14,8 @@ object HtmlCleaner {
 
     sealed class Segment {
         data class Text(val content: String) : Segment()
-        data class Image(val url: String) : Segment()
+        /** 图片：url + 垂直基线偏移（px，来自 HTML 的 vertical-align，用于行内对齐） */
+        data class Image(val url: String, val align: Float = 0f) : Segment()
     }
 
     private val wirisRe =
@@ -24,6 +25,11 @@ object HtmlCleaner {
     // 匹配所有图片：属性顺序任意（class/style/role/src 乱序均可），file.ewt360.com / Wiris 公式图 / 协议相对 // 均覆盖
     private val imgRe = Regex(
         """<img[^>]*?src="((?:https?:)?//[^"]*)"[^>]*>""",
+        RegexOption.IGNORE_CASE,
+    )
+    // 捕获图片的 vertical-align 偏移（px），用于行内基线对齐；无则为 0
+    private val imgAlignRe = Regex(
+        """<img[^>]*?style="[^"]*vertical-align:\s*(-?\d+(?:\.\d+)?)px[^"]*"[^>]*>""",
         RegexOption.IGNORE_CASE,
     )
     private val newlineRe = Regex("""\n{3,}""")
@@ -80,7 +86,8 @@ object HtmlCleaner {
                 val chunk = t.substring(last, m.range.first).trim()
                 if (chunk.isNotEmpty()) segments.add(Segment.Text(chunk))
             }
-            segments.add(Segment.Image(normalizeImgUrl(m.groupValues[1])))
+            val align = imgAlignRe.find(t, m.range.first)?.groupValues?.get(1)?.toFloatOrNull() ?: 0f
+            segments.add(Segment.Image(normalizeImgUrl(m.groupValues[1]), align))
             last = m.range.last + 1
         }
         if (last < t.length) {
