@@ -24,6 +24,12 @@ jobs:
           distribution: "zulu"
           java-version: "21"
 
+      # Chaquopy 构建期需要本机 Python 3.11（打包 python 代码到 APK）
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
