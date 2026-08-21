@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -345,33 +346,14 @@ private fun versionName(context: android.content.Context): String =
         context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
     }.getOrDefault("1.0.0")
 
-/** 致谢页：主标题 + GitHub 图标，四个开源项目点击跳转 */
+/** 致谢页：主标题 + GitHub 图标（actions 位，紧贴标题右侧），四个开源项目点击跳转 */
 @Composable
 fun AboutPlaceholderScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     Scaffold(
         topBar = {
             TopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "致谢",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MiuixTheme.colorScheme.onSurface,
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        // GitHub 图标：小尺寸，紧贴主标题后
-                        Icon(
-                            imageVector = GithubLogo,
-                            contentDescription = "GitHub",
-                            tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                            modifier = Modifier.size(16.dp),
-                        )
-                    }
-                },
+                title = "致谢",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -381,6 +363,17 @@ fun AboutPlaceholderScreen(onBack: () -> Unit) {
                             modifier = Modifier.rotate(180f),
                         )
                     }
+                },
+                actions = {
+                    // GitHub 图标：小尺寸，紧贴标题右侧
+                    Icon(
+                        imageVector = GithubLogo,
+                        contentDescription = "GitHub",
+                        tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                        modifier = Modifier
+                            .padding(end = 16.dp)
+                            .size(16.dp),
+                    )
                 },
             )
         },

@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,8 +70,8 @@ fun CoursePickScreen(
     var tasks by remember { mutableStateOf<List<BrushTask>?>(null) }
     var scanning by remember { mutableStateOf(true) }
     var scanError by remember { mutableStateOf<String?>(null) }
-    // 已选队列（lessonId 集合）
-    var selectedIds by remember { mutableStateOf<Set<String>>(CourseState.pickQueue.toSet()) }
+    // 已选队列（lessonId 集合，从全局队列恢复）
+    var selectedIds by remember { mutableStateOf<Set<String>>(CourseState.pickQueue.map { it.lessonId }.toSet()) }
 
     val handler = remember { Handler(Looper.getMainLooper()) }
 
