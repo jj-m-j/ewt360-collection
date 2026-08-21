@@ -191,7 +191,7 @@ fun AboutScreen(
             item(key = "brush_concurrency") {
                 SettingParamRow(
                     label = "并行路数",
-                    desc = "同时刷几个课时。越大越快，但过快易触发风控；默认 6，稳妥可降到 1–2。",
+                    desc = "单个课时内同时开启的并发上报路数（用并发冗余加速播放进度累加，不是同时刷的课时数）。越大越快，但过快易触发风控；默认 6，稳妥可降到 1–2。",
                     value = brushSettings.concurrency,
                     expanded = expandedParam == "concurrency",
                     options = listOf("1", "2", "4", "6", "8", "12"),
@@ -215,7 +215,7 @@ fun AboutScreen(
             item(key = "brush_burst") {
                 SettingParamRow(
                     label = "爆发",
-                    desc = "单课时竞态爆发并发路数，用并发冗余加速进度累加；默认 8，过高易触发 WAF。",
+                    desc = "单课时竞态爆发并发路数，在并行路数之上额外拉起请求，进一步加速进度累加；默认 8，过高易触发 WAF。",
                     value = brushSettings.burst,
                     expanded = expandedParam == "burst",
                     options = listOf("4", "6", "8", "12", "16"),
