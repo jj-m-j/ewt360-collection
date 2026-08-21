@@ -164,17 +164,13 @@ fun CourseBrushScreen(
                 val logPath = logFile.absolutePath
                 val ret: Int = if (!token.isNullOrBlank()) {
                     mod.callAttr(
-                        "run_brush_token", logPath, token,
-                        hw_filter = "", lesson_filter = lessonFilter,
-                        concurrency = settings.concurrency, qps = settings.qps,
-                        dry_run = false, burst_size = settings.burst, force_all = settings.forceAll,
+                        "run_brush_token", logPath, token, "", "", "", lessonFilter,
+                        settings.concurrency, settings.qps, false, settings.burst, settings.forceAll,
                     ).toInt()
                 } else {
                     mod.callAttr(
-                        "run_brush", logPath, "", "",
-                        hw_filter = "", lesson_filter = lessonFilter,
-                        concurrency = settings.concurrency, qps = settings.qps,
-                        dry_run = false, burst_size = settings.burst, force_all = settings.forceAll,
+                        "run_brush", logPath, "", "", "",
+                        settings.concurrency, settings.qps, false, settings.burst, settings.forceAll,
                     ).toInt()
                 }
                 handler.post { logText += "\n==== 队列刷结束，返回码 $ret ====\n" }
@@ -202,17 +198,13 @@ fun CourseBrushScreen(
                 val logPath = logFile.absolutePath
                 val ret: Int = if (!token.isNullOrBlank()) {
                     mod.callAttr(
-                        "run_brush_token", logPath, token,
-                        hw_filter = "", lesson_filter = "",
-                        concurrency = settings.concurrency, qps = settings.qps,
-                        dry_run = false, burst_size = settings.burst, force_all = settings.forceAll,
+                        "run_brush_token", logPath, token, "", "", "", "",
+                        settings.concurrency, settings.qps, false, settings.burst, settings.forceAll,
                     ).toInt()
                 } else {
                     mod.callAttr(
-                        "run_brush", logPath, "", "",
-                        hw_filter = "", lesson_filter = "",
-                        concurrency = settings.concurrency, qps = settings.qps,
-                        dry_run = false, burst_size = settings.burst, force_all = settings.forceAll,
+                        "run_brush", logPath, "", "", "",
+                        settings.concurrency, settings.qps, false, settings.burst, settings.forceAll,
                     ).toInt()
                 }
                 handler.post { logText += "\n==== 结束，返回码 $ret ====\n" }
