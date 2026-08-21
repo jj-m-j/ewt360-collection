@@ -2,9 +2,12 @@ package com.ewt.answer.ui.components
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.TextUnit
@@ -18,6 +21,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /**
  * 渲染解析 HTML：文本 + 公式图 / 插图分段展示。
  * 图片走全局 ImageLoader（EwtApplication 已配 UA/Referer 头），并统一 https + 转义清理。
+ * Wiris 公式 SVG 固定高度（行内公式大小），普通插图保持原尺寸自适应。
  */
 @Composable
 fun RichHtmlText(
@@ -60,17 +64,33 @@ fun AttachmentImageList(urls: List<String>, modifier: Modifier = Modifier) {
 
 /**
  * EWT 图片：https 规范化 + 全局 ImageLoader 头（UA/Referer）加载。
+ * Wiris 公式 SVG：固定高度 28dp、宽度自适应（大小统一，不再拉伸）；普通插图：fillMaxWidth。
  */
 @Composable
 private fun EwtImage(url: String) {
-    AsyncImage(
-        model = normalizeEwtImageUrl(url),
-        contentDescription = null,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
-        contentScale = ContentScale.Fit,
-    )
+    val normalized = normalizeEwtImageUrl(url)
+    val isFormula = normalized.contains("Wirisformula") || normalized.contains("wiris")
+    if (isFormula) {
+        AsyncImage(
+            model = normalized,
+            contentDescription = null,
+            modifier = Modifier
+                .padding(vertical = 2.dp)
+                .height(28.dp)
+                .widthIn(max = 400.dp)
+                .align(Alignment.CenterStart),
+            contentScale = ContentScale.Fit,
+        )
+    } else {
+        AsyncImage(
+            model = normalized,
+            contentDescription = null,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp),
+            contentScale = ContentScale.Fit,
+        )
+    }
 }
 
 /** 规范化图片 URL：JSON 转义反斜杠 / 相对协议 / http→https */
