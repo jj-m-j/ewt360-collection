@@ -114,6 +114,7 @@ fun HomeScreen(
     val brushing by vm.brushing.collectAsState()
     val brushProgress by vm.brushProgress.collectAsState()
     val brushResult by vm.brushResult.collectAsState()
+    val brushPaused by vm.brushPaused.collectAsState()
 
     var showBrushDialog by remember { mutableStateOf(false) }
 
@@ -228,8 +229,10 @@ fun HomeScreen(
                 item(key = "brush_today") {
                     BrushTodayEntry(
                         brushing = brushing,
+                        paused = brushPaused,
                         progress = brushProgress,
-                        onClick = { showBrushDialog = true },
+                        onClick = { if (!brushing) showBrushDialog = true },
+                        onTogglePause = { vm.toggleBrushPause() },
                     )
                 }
                 // 三条杠：一键刷今日下边靠右（弹层从按钮旁 Morph 生长）
@@ -673,9 +676,15 @@ private fun FilterOptionRow(label: String, value: String, onClick: () -> Unit) {
 
 // ── 一键刷今日 ──────────────────────────────────────────────────
 
-/** 一键刷今日入口卡片 */
+/** 一键刷今日入口卡片（刷卷中可暂停/继续） */
 @Composable
-private fun BrushTodayEntry(brushing: Boolean, progress: String, onClick: () -> Unit) {
+private fun BrushTodayEntry(
+    brushing: Boolean,
+    paused: Boolean,
+    progress: String,
+    onClick: () -> Unit,
+    onTogglePause: () -> Unit,
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -689,7 +698,11 @@ private fun BrushTodayEntry(brushing: Boolean, progress: String, onClick: () -> 
         ) {
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = if (brushing) "正在刷卷…" else "一键刷今日试卷",
+                    text = when {
+                        brushing && paused -> "已暂停（一键刷今日）"
+                        brushing -> "正在刷卷…"
+                        else -> "一键刷今日试卷"
+                    },
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium,
                     color = if (brushing) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
@@ -697,6 +710,7 @@ private fun BrushTodayEntry(brushing: Boolean, progress: String, onClick: () -> 
                 Spacer(Modifier.height(3.dp))
                 Text(
                     text = when {
+                        brushing && paused -> "点击右侧继续"
                         brushing && progress.isNotBlank() -> progress
                         brushing -> "正在初始化…"
                         else -> "选择日期，批量获取答案并提交交卷自批"
@@ -707,11 +721,25 @@ private fun BrushTodayEntry(brushing: Boolean, progress: String, onClick: () -> 
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Icon(
-                imageVector = MiuixIcons.Basic.ArrowRight,
-                contentDescription = "刷今日试卷",
-                tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
-            )
+            if (brushing) {
+                Spacer(Modifier.width(8.dp))
+                // 暂停/继续按钮
+                Button(
+                    onClick = onTogglePause,
+                    colors = ButtonDefaults.buttonColors(
+                        color = MiuixTheme.colorScheme.primary,
+                        contentColor = MiuixTheme.colorScheme.onPrimary,
+                    ),
+                ) {
+                    Text(if (paused) "继续" else "暂停", fontSize = 13.sp)
+                }
+            } else {
+                Icon(
+                    imageVector = MiuixIcons.Basic.ArrowRight,
+                    contentDescription = "刷今日试卷",
+                    tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                )
+            }
         }
     }
 }
