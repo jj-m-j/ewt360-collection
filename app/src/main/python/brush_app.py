@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import re
 import sys
 
 
@@ -74,6 +75,37 @@ def run_brush(log_path, account, password, hw_filter="", concurrency=6, qps=150.
             print("✓ 登录成功: %s…%s" % (token[:16], token[-8:]))
         else:
             print("✓ 使用已保存 token: %s…%s" % (token[:16], token[-8:]))
+        code = asyncio.run(b.run_brush_all(
+            token, account, password,
+            hw_filter=hw_filter or None,
+            concurrency=int(concurrency),
+            qps=float(qps),
+            dry_run=bool(dry_run),
+            burst_size=int(burst_size),
+        ))
+        return int(code)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        return 1
+
+
+def run_brush_token(log_path, token, account="", password="", hw_filter="", concurrency=6, qps=150.0, dry_run=False, burst_size=8):
+    """直接用主 App 已登录的 token 刷课（账号密码可空，仅 token 失效续期时用）。"""
+    b = _prepare(log_path)
+    try:
+        token = (token or "").strip()
+        if not token or not re.match(r"^\d+-(1|2)-[0-9a-fA-F]+$", token):
+            print("✗ 传入的 token 无效，请先在主 App 登录")
+            return 1
+        token_file = os.environ.get("EWT_TOKEN_FILE", "")
+        if token_file:
+            try:
+                with open(token_file, "w") as f:
+                    f.write(token)
+            except Exception:
+                pass
+        print("✓ 使用已登录 token: %s…%s" % (token[:16], token[-8:]))
         code = asyncio.run(b.run_brush_all(
             token, account, password,
             hw_filter=hw_filter or None,
