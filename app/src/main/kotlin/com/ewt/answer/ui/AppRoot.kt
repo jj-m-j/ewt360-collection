@@ -76,8 +76,6 @@ sealed class Screen {
     data object Debug : Screen()
     /** 关于（占位页，从设置页进入） */
     data object About : Screen()
-    /** 课程刷课设置（二级页） */
-    data object CourseSettings : Screen()
     data class Questions(val paper: Paper) : Screen()
 }
 
@@ -329,8 +327,7 @@ fun AppRoot() {
                             targetState is Screen.Questions ||
                                 targetState is Screen.LinkQuery ||
                                 targetState is Screen.Debug ||
-                                targetState is Screen.About ||
-                                targetState is Screen.CourseSettings -> {
+                                targetState is Screen.About -> {
                                 (fadeIn(tween(240)) + slideInHorizontally(tween(300)) { it / 3 })
                                     .togetherWith(fadeOut(tween(200)))
                             }
@@ -442,16 +439,10 @@ private fun RenderScreen(
             onOpenLinkQuery = { navigateTo(Screen.LinkQuery) },
             onOpenDebug = { navigateTo(Screen.Debug) },
             onOpenAbout = { navigateTo(Screen.About) },
-            onOpenCourseSettings = { navigateTo(Screen.CourseSettings) },
             onLogout = {
                 repo.clearToken()
                 navigateTo(Screen.Login)
             },
-        )
-        Screen.CourseSettings -> CourseBrushSettingsScreen(
-            settings = brushSettings,
-            onChange = onBrushSettingsChange,
-            onBack = onBack,
         )
         Screen.LinkQuery -> LinkQueryScreen(
             onBack = onBack,
@@ -487,7 +478,6 @@ private fun MainLayer(
     onOpenLinkQuery: () -> Unit,
     onOpenDebug: () -> Unit,
     onOpenAbout: () -> Unit,
-    onOpenCourseSettings: () -> Unit,
     onLogout: () -> Unit,
 ) {
     // 玻璃底栏的反射源：捕获整个 Tab 内容（列表滚动画面；顶栏 blur 在页面内部用独立 backdrop，避免成环）
@@ -515,7 +505,6 @@ private fun MainLayer(
             when (t) {
                 TAB_COURSE -> CourseBrushScreen(
                     settings = brushSettings,
-                    onOpenSettings = onOpenCourseSettings,
                 )
                 TAB_PAPERS -> HomeScreen(
                     userInfo = userInfo,
@@ -531,6 +520,8 @@ private fun MainLayer(
                     onOpenDebug = onOpenDebug,
                     onOpenAbout = onOpenAbout,
                     onLogout = onLogout,
+                    brushSettings = brushSettings,
+                    onBrushSettingsChange = onBrushSettingsChange,
                 )
             }
         }
