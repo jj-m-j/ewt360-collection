@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
@@ -289,12 +290,24 @@ fun HomeScreen(
                                         }
                                     }
                                 }
-                                items(papers, key = { it.paperId }) { paper ->
-                                    PaperRow(
-                                        paper = paper,
-                                        count = paperCounts[paper.paperId],
-                                        onClick = { onOpenPaper(paper) },
-                                    )
+                                // 试卷列表：相邻试卷间加分割线
+                                itemsIndexed(papers, key = { _, p -> p.paperId }) { i, paper ->
+                                    Column {
+                                        PaperRow(
+                                            paper = paper,
+                                            count = paperCounts[paper.paperId],
+                                            onClick = { onOpenPaper(paper) },
+                                        )
+                                        if (i < papers.lastIndex) {
+                                            Box(
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .height(0.5.dp)
+                                                    .padding(horizontal = 16.dp)
+                                                    .background(MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.15f)),
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -338,7 +351,9 @@ fun HomeScreen(
                         color = MiuixTheme.colorScheme.primary,
                         contentColor = MiuixTheme.colorScheme.onPrimary,
                     ),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
                 ) {
                     Text("知道了", fontSize = 14.sp)
                 }
@@ -715,7 +730,7 @@ private fun BrushTodayEntry(
     }
 }
 
-/** 刷今日：日期滚轮选择对话框（按钮上下布局） */
+/** 刷今日：日期滚轮选择对话框（蓝色开始在上、白色取消在下） */
 @Composable
 private fun BrushDateDialog(
     dateOptions: List<String>,
@@ -741,23 +756,27 @@ private fun BrushDateDialog(
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(16.dp))
-            // 上下布局：取消在上、开始在下
-            TextButton(
-                text = "取消",
-                onClick = onDismiss,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(6.dp))
+            // 蓝色开始在上、白色取消在下（等高）
             Button(
                 onClick = { onStart(dateOptions[index]) },
                 colors = ButtonDefaults.buttonColors(
                     color = MiuixTheme.colorScheme.primary,
                     contentColor = MiuixTheme.colorScheme.onPrimary,
                 ),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
             ) {
                 Text("开始", fontSize = 14.sp)
             }
+            Spacer(Modifier.height(8.dp))
+            TextButton(
+                text = "取消",
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+            )
         }
     }
 }
