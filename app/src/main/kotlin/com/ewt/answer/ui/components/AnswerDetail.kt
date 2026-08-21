@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.ewt.answer.data.HtmlCleaner
 import com.ewt.answer.data.QuestionAnswer
 import com.ewt.answer.data.QuestionItem
 import top.yukonga.miuix.kmp.basic.Card
@@ -75,12 +76,20 @@ fun AnswerDetailCard(
                     )
                 }
                 a.answer.isNotBlank() -> {
-                    Text(
-                        text = a.answer,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MiuixTheme.colorScheme.primary,
-                    )
+                    // 答案可能含公式图 / 插图（Wirisformula <img>），含图时走富文本渲染
+                    if (HtmlCleaner.containsImage(a.answer)) {
+                        RichHtmlText(
+                            html = a.answer,
+                            textColor = MiuixTheme.colorScheme.primary,
+                        )
+                    } else {
+                        Text(
+                            text = a.answer,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MiuixTheme.colorScheme.primary,
+                        )
+                    }
                 }
                 else -> {
                     Text(
@@ -101,11 +110,28 @@ fun AnswerDetailCard(
                             .padding(vertical = 6.dp),
                     ) {
                         Text(
-                            text = "${child.num}  ${child.answer.ifBlank { "(主观题)" }}",
+                            text = child.num,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MiuixTheme.colorScheme.primary,
                         )
+                        if (child.answer.isNotBlank()) {
+                            Spacer(Modifier.height(3.dp))
+                            // 子题答案同样可能含公式图，含图时走富文本渲染
+                            if (HtmlCleaner.containsImage(child.answer)) {
+                                RichHtmlText(
+                                    html = child.answer,
+                                    textColor = MiuixTheme.colorScheme.primary,
+                                )
+                            } else {
+                                Text(
+                                    text = child.answer,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MiuixTheme.colorScheme.primary,
+                                )
+                            }
+                        }
                         if (child.knowledge.isNotBlank()) {
                             Spacer(Modifier.height(3.dp))
                             Text(
