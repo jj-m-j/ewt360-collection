@@ -1472,6 +1472,7 @@ async def run_brush_all(
     account: str,
     password: str,
     hw_filter: str | None = None,
+    lesson_filter: str | None = None,
     concurrency: int = 12,
     qps: float = 400.0,
     offset: int = 0,
@@ -1529,6 +1530,9 @@ async def run_brush_all(
         # ---- 扫描课时（force_all 时含已完成）----
         tasks = await scan_pending_tasks(client, school_id, hw_filter,
                                          include_finished=force_all)
+        # 指定单个课时：只刷该课时
+        if lesson_filter:
+            tasks = [t for t in tasks if str(t[1].get("lessonId")) == str(lesson_filter)]
         if not tasks:
             print("\n没有未完成的课时（可能已全部刷完）")
             return 0
@@ -1624,6 +1628,47 @@ async def run_brush_all(
         return 0 if ok_count == len(tasks) else 1
     finally:
         await client.close()
+
+
+async def _scan_tasks_json(token: str) -> str:
+    """扫描全部未完成课时，返回 JSON 数组字符串供 App 展示。"""
+    client = EwtClient(token)
+    try:
+        school_info = await client.fetch_school_info()
+        school_id = int(school_info["schoolId"])
+        tasks = await scan_pending_tasks(client, school_id)
+        out = []
+        for hid, t in tasks:
+            out.append({
+                "homeworkId": str(hid),
+                "lessonId": str(t.get("lessonId")),
+                "title": str(t.get("title") or "")[:60],
+                "subject": str(t.get("subjectName") or ""),
+                "duration": int(t.get("duration") or 0),
+                "contentType": int(t.get("contentType") or 1),
+            })
+        return json.dumps(out, ensure_ascii=False)
+    finally:
+        await client.close()
+
+
+def scan_tasks(log_path, token):
+    """App 入口：扫描未刷课时，返回 JSON 数组。"""
+    b = _prepare(log_path)
+    try:
+        token = (token or "").strip()
+        if not token:
+            return "[]"
+        token_file = os.environ.get("EWT_TOKEN_FILE", "")
+        if token_file:
+            try:
+                with open(token_file, "w") as f:
+                    f.write(token)
+            except Exception:
+                pass
+        return asyncio.run(b._scan_tasks_json(token))
+    except Exception:
+        return "[]"
 
 
 # ======================================================================
