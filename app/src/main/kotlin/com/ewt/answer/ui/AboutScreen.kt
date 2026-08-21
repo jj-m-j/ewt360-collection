@@ -199,6 +199,7 @@ fun AboutScreen(
                     onClick = { expandedParam = if (expandedParam == "concurrency") null else "concurrency" },
                 )
             }
+            item(key = "div_1") { SettingDivider() }
             item(key = "brush_qps") {
                 SettingParamRow(
                     label = "QPS",
@@ -210,6 +211,7 @@ fun AboutScreen(
                     onClick = { expandedParam = if (expandedParam == "qps") null else "qps" },
                 )
             }
+            item(key = "div_2") { SettingDivider() }
             item(key = "brush_burst") {
                 SettingParamRow(
                     label = "爆发",
@@ -221,6 +223,7 @@ fun AboutScreen(
                     onClick = { expandedParam = if (expandedParam == "burst") null else "burst" },
                 )
             }
+            item(key = "div_3") { SettingDivider() }
 
             item(key = "about") {
                 ActionCard(
@@ -229,14 +232,16 @@ fun AboutScreen(
                     onClick = onOpenAbout,
                 )
             }
+            item(key = "div_4") { SettingDivider() }
 
             item(key = "debug") {
                 ActionCard(
                     title = "调试模式",
-                    subtitle = "查看日志 / 导出刷课日志",
+                    subtitle = "导出刷课日志",
                     onClick = onOpenDebug,
                 )
             }
+            item(key = "div_5") { SettingDivider() }
 
             item(key = "logout") {
                 ActionCard(
@@ -248,6 +253,18 @@ fun AboutScreen(
             }
         }
     }
+}
+
+/** 设置项分割线 */
+@Composable
+private fun SettingDivider() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(0.5.dp)
+            .padding(horizontal = 4.dp)
+            .background(MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.12f)),
+    )
 }
 
 /** 设置项行：标签 + 当前值 + 说明，点击在行下方滑出横向数值选择 */
@@ -346,7 +363,7 @@ private fun versionName(context: android.content.Context): String =
         context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
     }.getOrDefault("1.0.0")
 
-/** 致谢页：主标题 + GitHub 图标（actions 位，紧贴标题右侧），四个开源项目点击跳转 */
+/** 致谢页：主标题 + GitHub 图标（actions 位，紧贴标题右侧同高），四个开源项目点击跳转 */
 @Composable
 fun AboutPlaceholderScreen(onBack: () -> Unit) {
     val context = LocalContext.current
@@ -365,14 +382,14 @@ fun AboutPlaceholderScreen(onBack: () -> Unit) {
                     }
                 },
                 actions = {
-                    // GitHub 图标：小尺寸，紧贴标题右侧
+                    // GitHub 图标：与标题同高度（18dp），紧贴右侧
                     Icon(
                         imageVector = GithubLogo,
                         contentDescription = "GitHub",
                         tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
                         modifier = Modifier
-                            .padding(end = 16.dp)
-                            .size(16.dp),
+                            .padding(end = 14.dp)
+                            .size(18.dp),
                     )
                 },
             )
