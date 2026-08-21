@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.chaquopy)
 }
 
 android {
@@ -17,6 +18,9 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0.0"
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
     signingConfigs {
         register("release") {
@@ -34,6 +38,15 @@ android {
     packaging {
         jniLibs {
             excludes += "lib/*/libandroidx.graphics.path.so"
+        }
+    }
+}
+
+chaquopy {
+    defaultConfig {
+        version = "3.11"
+        pip {
+            install("httpx")
         }
     }
 }

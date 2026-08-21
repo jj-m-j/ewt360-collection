@@ -1,6 +1,6 @@
 package com.ewt.answer
 
-import android.app.Application
+import com.chaquo.python.android.PyApplication
 import android.webkit.CookieManager
 import coil3.ImageLoader
 import coil3.PlatformContext
@@ -14,7 +14,7 @@ import okhttp3.CookieJar
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 
-class EwtApplication : Application(), SingletonImageLoader.Factory {
+class EwtApplication : PyApplication(), SingletonImageLoader.Factory {
 
     override fun onCreate() {
         super.onCreate()

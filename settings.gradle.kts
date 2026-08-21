@@ -9,6 +9,8 @@ pluginManagement {
         }
         mavenCentral()
         gradlePluginPortal()
+        // Chaquopy（Python 刷课）：插件仓库
+        maven { url = uri("https://chaquo.com/maven") }
     }
 }
 
@@ -22,6 +24,8 @@ dependencyResolutionManagement {
             }
         }
         mavenCentral()
+        // Chaquopy Python wheel 仓库
+        maven { url = uri("https://chaquo.com/maven") }
     }
 }
 

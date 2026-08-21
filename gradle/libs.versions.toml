@@ -1,4 +1,5 @@
 [versions]
+chaquopy = "17.0.0"
 agp = "9.2.1"
 kotlin = "2.4.0"
 compose = "1.11.1"
@@ -30,5 +31,6 @@ coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version
 coil-svg = { module = "io.coil-kt.coil3:coil-svg", version.ref = "coil" }
 
 [plugins]
+chaquopy = { id = "com.chaquo.python", version.ref = "chaquopy" }
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
