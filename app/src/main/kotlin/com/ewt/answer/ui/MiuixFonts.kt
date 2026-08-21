@@ -17,6 +17,10 @@ import java.util.concurrent.TimeUnit
  * 字体文件不打包进 APK，而是托管在 GitHub 仓库 fonts/ 目录：
  *   https://raw.githubusercontent.com/jj-m-j/ewttest/main/fonts/MiSansVF.ttf
  *
+ * 下载多源回退（国内可用性）：
+ *   1. jsDelivr CDN（cdn / fastly / gcore 三域名，代理 GitHub 仓库，国内有节点）
+ *   2. raw.githubusercontent.com 原始源（兜底）
+ *
  * - 由用户确认后下载 MiSansVF 可变字体（约 20MB）到缓存目录
  * - 之后启动直接使用本地缓存，离线可用
  * - 开关关闭时恢复系统字体并删除缓存
@@ -24,15 +28,22 @@ import java.util.concurrent.TimeUnit
  */
 object MiuixFonts {
 
-    private const val FONT_BASE = "https://raw.githubusercontent.com/jj-m-j/ewttest/main/fonts/"
     /** 可变字体文件名（仓库中） */
     private const val REMOTE_VF_NAME = "MiSansVF.ttf"
     /** 本地缓存文件名 */
     private const val CACHE_VF_NAME = "misans_vf.ttf"
 
+    /** 下载源列表（按顺序尝试，成功即停） */
+    private val FONT_SOURCES = listOf(
+        "https://cdn.jsdelivr.net/gh/jj-m-j/ewttest@main/fonts/$REMOTE_VF_NAME",
+        "https://fastly.jsdelivr.net/gh/jj-m-j/ewttest@main/fonts/$REMOTE_VF_NAME",
+        "https://gcore.jsdelivr.net/gh/jj-m-j/ewttest@main/fonts/$REMOTE_VF_NAME",
+        "https://raw.githubusercontent.com/jj-m-j/ewttest/main/fonts/$REMOTE_VF_NAME",
+    )
+
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(180, TimeUnit.SECONDS)
         .build()
 
     /** 全部字重映射（可变字体通过 wght variation 动态匹配） */
@@ -69,7 +80,10 @@ object MiuixFonts {
         val dir = File(context.filesDir, "fonts").apply { mkdirs() }
         val file = File(dir, CACHE_VF_NAME)
         if (!file.exists() || file.length() == 0L) {
-            runCatching { download(FONT_BASE + REMOTE_VF_NAME, file) }
+            // 多源依次尝试，任一成功即停止
+            for (url in FONT_SOURCES) {
+                if (download(url, file)) break
+            }
         }
         if (file.exists() && file.length() > 0L) {
             // 同一可变字体文件按不同字重注册，Compose 请求对应 wght（API 26+）
@@ -84,13 +98,20 @@ object MiuixFonts {
         File(context.filesDir, "fonts").deleteRecursively()
     }
 
-    private fun download(url: String, target: File) {
-        client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
-            if (resp.isSuccessful) {
-                resp.body?.byteStream()?.use { input ->
-                    target.outputStream().use { output -> input.copyTo(output) }
+    /** 尝试下载，成功返回 true */
+    private fun download(url: String, target: File): Boolean {
+        return runCatching {
+            client.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    resp.body?.byteStream()?.use { input ->
+                        target.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    // 校验非空且是有效字体（TTF 头 0x00010000 或 0x74727565）
+                    target.length() > 1024L
+                } else {
+                    false
                 }
             }
-        }
+        }.getOrDefault(false)
     }
 }
