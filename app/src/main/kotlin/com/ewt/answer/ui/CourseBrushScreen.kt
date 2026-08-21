@@ -41,7 +41,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -80,16 +79,14 @@ data class BrushTask(
     val duration: Int,
 )
 
-/** 日志菜单项 */
-private enum class LogAction { Detail, Clear }
-
 /**
  * 课程页：Python 刷课（Chaquopy 内嵌 ewt_brush_v2）。
- * 自动读取主 App 已登录 token；可扫描未刷课程（长按多选批量刷）、开始/暂停；日志固定框内滚动。
+ * 自动读取主 App 已登录 token；可扫描未刷课程（长按多选批量刷）、刷指定课程队列、开始/暂停；日志固定框内滚动。
  */
 @Composable
 fun CourseBrushScreen(
     settings: BrushSettings,
+    onOpenCoursePick: () -> Unit,
 ) {
     val context = LocalContext.current
     val logFile = remember { File(context.filesDir, "brush.log") }
@@ -109,6 +106,8 @@ fun CourseBrushScreen(
     // 多选模式
     var selectMode by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // 指定课程队列（来自 CoursePickScreen）
+    val pickQueue = remember { mutableStateOf(CourseState.pickQueue) }
     val pauseFile = remember { File(context.filesDir, "pause.flag") }
 
     // 自动获取主 App 已登录 token（不显示明文）
@@ -154,11 +153,10 @@ fun CourseBrushScreen(
     LaunchedEffect(selectedLesson) { CourseState.selectedLesson = selectedLesson }
     LaunchedEffect(showDetail) { CourseState.showDetail = showDetail }
 
-    /** 批量刷：选中的课程依次刷取 */
-    fun brushSelected() {
-        if (running || selectedIds.isEmpty()) return
+    /** 批量刷：按队列（指定课程 或 多选）依次刷取 */
+    fun brushQueue(queue: List<BrushTask>) {
+        if (running || queue.isEmpty()) return
         val token = AppContainer.tokenStore.load()
-        val queue = (tasks ?: emptyList()).filter { it.lessonId in selectedIds }
         running = true
         paused = false
         pauseFile.delete()
@@ -348,17 +346,63 @@ fun CourseBrushScreen(
                     }
                 }
             }
-            // 扫描未刷课程
-            item(key = "scan_btn") {
-                Button(
-                    onClick = { runPy("scan") },
-                    enabled = !running && !scanning,
+            // 扫描未刷课程 + 刷指定课程入口
+            item(key = "scan_row") {
+                Row(
                     modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(
-                        text = if (scanning) "扫描中…" else "扫描未刷课程",
-                        fontSize = 14.sp,
-                    )
+                    Button(
+                        onClick = { runPy("scan") },
+                        enabled = !running && !scanning,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(
+                            text = if (scanning) "扫描中…" else "扫描未刷课程",
+                            fontSize = 14.sp,
+                        )
+                    }
+                    Button(
+                        onClick = onOpenCoursePick,
+                        enabled = !running,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(
+                            text = "刷指定课程",
+                            fontSize = 14.sp,
+                        )
+                    }
+                }
+            }
+            // 已选队列提示（来自刷指定课程二级页）
+            if (pickQueue.value.isNotEmpty()) {
+                item(key = "pick_queue") {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp),
+                        insideMargin = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = "已选 ${pickQueue.value.size} 个指定课程：${pickQueue.value.joinToString("、") { it.title }}",
+                                fontSize = 12.sp,
+                                color = MiuixTheme.colorScheme.primary,
+                                maxLines = 1,
+                                modifier = Modifier.weight(1f),
+                            )
+                            TextButton(
+                                text = "清除",
+                                onClick = {
+                                    CourseState.pickQueue = emptyList()
+                                    pickQueue.value = emptyList()
+                                },
+                            )
+                        }
+                    }
                 }
             }
             // 未刷课程列表（进场动画 + 长按多选）
@@ -387,7 +431,7 @@ fun CourseBrushScreen(
                             }
                         }
                     }
-                    list.forEachIndexed { index, t ->
+                    list.forEach { t ->
                         item(key = "task_${t.lessonId}") {
                             val isSel = selectedLesson == t.lessonId
                             val isChecked = t.lessonId in selectedIds
@@ -491,7 +535,9 @@ fun CourseBrushScreen(
                                         modifier = Modifier.weight(1f),
                                     )
                                     Button(
-                                        onClick = { brushSelected() },
+                                        onClick = {
+                                            brushQueue((tasks ?: emptyList()).filter { it.lessonId in selectedIds })
+                                        },
                                         enabled = selectedIds.isNotEmpty() && !running,
                                         colors = ButtonDefaults.buttonColors(
                                             color = MiuixTheme.colorScheme.primary,
@@ -533,7 +579,18 @@ fun CourseBrushScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Button(
-                        onClick = { if (running) togglePause() else runPy("brush") },
+                        onClick = {
+                            if (running) {
+                                togglePause()
+                            } else {
+                                // 有指定课程队列则刷队列，否则刷全部
+                                if (pickQueue.value.isNotEmpty()) {
+                                    brushQueue(pickQueue.value)
+                                } else {
+                                    runPy("brush")
+                                }
+                            }
+                        },
                         enabled = true,
                         colors = ButtonDefaults.buttonColors(
                             color = MiuixTheme.colorScheme.primary,
@@ -545,7 +602,8 @@ fun CourseBrushScreen(
                             text = when {
                                 running && paused -> "继续"
                                 running -> "暂停"
-                                else -> "开始刷课"
+                                pickQueue.value.isNotEmpty() -> "开始刷已选的 ${pickQueue.value.size} 个课程"
+                                else -> "刷全部课程"
                             },
                             fontSize = 14.sp,
                         )
@@ -614,7 +672,7 @@ fun CourseBrushScreen(
     }
 }
 
-/** 日志菜单：三条杠弹出（Detail 切换 / 清空），纯文字 + 分割线 + 原生阴影 */
+/** 日志菜单：三条杠弹出（Detail 切换 / 清空），纯文字 + 分割线 */
 @Composable
 private fun LogMenuPopup(
     showDetail: Boolean,
@@ -636,7 +694,6 @@ private fun LogMenuPopup(
         Card(
             modifier = Modifier
                 .width(140.dp)
-                .shadow(16.dp, RoundedCornerShape(16.dp), clip = false)
                 .graphicsLayer {
                     alpha = p
                     scaleX = 0.94f + 0.06f * p
@@ -684,4 +741,6 @@ object CourseState {
     var tasks: List<BrushTask>? = null
     var selectedLesson: String? = null
     var showDetail: Boolean = false
+    /** 刷指定课程队列（来自 CoursePickScreen） */
+    var pickQueue: List<BrushTask> = emptyList()
 }
