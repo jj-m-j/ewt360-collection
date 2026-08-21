@@ -45,8 +45,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ewt.answer.data.AppContainer
@@ -493,7 +491,7 @@ private fun MainLayer(
             label = "tab",
         ) { t ->
             when (t) {
-                TAB_COURSE -> CoursePlaceholderScreen()
+                TAB_COURSE -> CourseBrushScreen()
                 TAB_PAPERS -> HomeScreen(
                     userInfo = userInfo,
                     paperCounts = paperCounts,
@@ -548,31 +546,6 @@ private fun miSansTextStyles(fontFamily: FontFamily): TextStyles {
         title3 = base.title3.copy(fontFamily = fontFamily),
         title4 = base.title4.copy(fontFamily = fontFamily),
     )
-}
-
-/** 课程占位页（课程功能已移除，仅保留占位） */
-@Composable
-private fun CoursePlaceholderScreen() {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = "课程",
-                fontSize = 26.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MiuixTheme.colorScheme.onSurface,
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "课程功能已移除\n敬请期待",
-                fontSize = 14.sp,
-                textAlign = TextAlign.Center,
-                color = MiuixTheme.colorScheme.onSurfaceSecondary,
-            )
-        }
-    }
 }
 
 @Composable
