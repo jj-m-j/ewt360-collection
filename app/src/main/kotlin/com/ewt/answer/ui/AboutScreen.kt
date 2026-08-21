@@ -1,10 +1,13 @@
 package com.ewt.answer.ui
 
-import android.content.Intent
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,7 +25,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,16 +33,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
-import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -53,11 +50,10 @@ import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.ArrowRight
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import java.io.File
 
 /**
  * 设置页（底部 Tab）：大标题 miuix 原生排版。
- * 含刷课设置（并行路数 / QPS / 爆发，点击弹锚定气泡）+ 调试模式（含导出日志）。
+ * 含刷课设置（并行路数 / QPS / 爆发，点击行下方横向滑出数值选择）+ 调试模式（含导出刷课日志）。
  */
 @Composable
 fun AboutScreen(
@@ -72,7 +68,8 @@ fun AboutScreen(
 ) {
     val listState = rememberLazyListState()
     val context = LocalContext.current
-    var anchor by remember { mutableStateOf<String?>(null) }
+    // 展开的参数行（null=不展开）
+    var expandedParam by remember { mutableStateOf<String?>(null) }
 
     Box(
         Modifier
@@ -176,7 +173,10 @@ fun AboutScreen(
                     label = "并行路数",
                     desc = "同时刷几个课时。越大越快，但过快易触发风控；默认 6，稳妥可降到 1–2。",
                     value = brushSettings.concurrency,
-                    onClick = { anchor = "concurrency" },
+                    expanded = expandedParam == "concurrency",
+                    options = listOf("1", "2", "4", "6", "8", "12"),
+                    onSelect = { onBrushSettingsChange(brushSettings.copy(concurrency = it)) },
+                    onClick = { expandedParam = if (expandedParam == "concurrency") null else "concurrency" },
                 )
             }
             item(key = "brush_qps") {
@@ -184,7 +184,10 @@ fun AboutScreen(
                     label = "QPS",
                     desc = "网关全局限速（请求/分钟）。配合并行路数，防 429 风控拦截；默认 150，网络稳可升到 300–400。",
                     value = brushSettings.qps,
-                    onClick = { anchor = "qps" },
+                    expanded = expandedParam == "qps",
+                    options = listOf("50", "100", "150", "200", "300", "400"),
+                    onSelect = { onBrushSettingsChange(brushSettings.copy(qps = it)) },
+                    onClick = { expandedParam = if (expandedParam == "qps") null else "qps" },
                 )
             }
             item(key = "brush_burst") {
@@ -192,14 +195,17 @@ fun AboutScreen(
                     label = "爆发",
                     desc = "单课时竞态爆发并发路数，用并发冗余加速进度累加；默认 8，过高易触发 WAF。",
                     value = brushSettings.burst,
-                    onClick = { anchor = "burst" },
+                    expanded = expandedParam == "burst",
+                    options = listOf("4", "6", "8", "12", "16"),
+                    onSelect = { onBrushSettingsChange(brushSettings.copy(burst = it)) },
+                    onClick = { expandedParam = if (expandedParam == "burst") null else "burst" },
                 )
             }
 
             item(key = "about") {
                 ActionCard(
-                    title = "关于",
-                    subtitle = "版本信息 / 项目说明",
+                    title = "致谢",
+                    subtitle = "本项目所参考的开源项目",
                     onClick = onOpenAbout,
                 )
             }
@@ -207,25 +213,8 @@ fun AboutScreen(
             item(key = "debug") {
                 ActionCard(
                     title = "调试模式",
-                    subtitle = "查看日志 / 导出刷课日志 / 下载字体",
+                    subtitle = "查看日志 / 导出刷课日志",
                     onClick = onOpenDebug,
-                )
-            }
-
-            item(key = "export_log") {
-                ActionCard(
-                    title = "导出刷课日志",
-                    subtitle = "分享 brush.log 完整刷课日志",
-                    onClick = {
-                        val logFile = File(context.filesDir, "brush.log")
-                        val text = if (logFile.exists()) logFile.readText() else "（暂无刷课日志）"
-                        val intent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_SUBJECT, "EWT 刷课日志")
-                            putExtra(Intent.EXTRA_TEXT, text)
-                        }
-                        runCatching { context.startActivity(Intent.createChooser(intent, "导出刷课日志")) }
-                    },
                 )
             }
 
@@ -238,43 +227,18 @@ fun AboutScreen(
                 )
             }
         }
-
-        // 锚定式气泡弹窗：纵向数值列表（窄、右对齐、选中蓝色、动画 + 阴影）
-        when (anchor) {
-            "concurrency" -> SettingValuePopup(
-                title = "并行路数",
-                desc = "同时刷几个课时。越大越快，但过快易触发风控；默认 6，稳妥可降到 1–2。",
-                options = listOf("1", "2", "4", "6", "8", "12"),
-                selected = brushSettings.concurrency,
-                onSelect = { onBrushSettingsChange(brushSettings.copy(concurrency = it)); anchor = null },
-                onDismiss = { anchor = null },
-            )
-            "qps" -> SettingValuePopup(
-                title = "QPS",
-                desc = "网关全局限速（请求/分钟）。配合并行路数，防 429 风控拦截；默认 150，网络稳可升到 300–400。",
-                options = listOf("50", "100", "150", "200", "300", "400"),
-                selected = brushSettings.qps,
-                onSelect = { onBrushSettingsChange(brushSettings.copy(qps = it)); anchor = null },
-                onDismiss = { anchor = null },
-            )
-            "burst" -> SettingValuePopup(
-                title = "爆发",
-                desc = "单课时竞态爆发并发路数，用并发冗余加速进度累加；默认 8，过高易触发 WAF。",
-                options = listOf("4", "6", "8", "12", "16"),
-                selected = brushSettings.burst,
-                onSelect = { onBrushSettingsChange(brushSettings.copy(burst = it)); anchor = null },
-                onDismiss = { anchor = null },
-            )
-        }
     }
 }
 
-/** 设置项行：标签 + 当前值 + 说明，点击弹气泡 */
+/** 设置项行：标签 + 当前值 + 说明，点击在行下方滑出横向数值选择 */
 @Composable
 private fun SettingParamRow(
     label: String,
     desc: String,
     value: String,
+    expanded: Boolean,
+    options: List<String>,
+    onSelect: (String) -> Unit,
     onClick: () -> Unit,
 ) {
     Card(
@@ -317,65 +281,37 @@ private fun SettingParamRow(
                 tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
             )
         }
-    }
-}
-
-/** 锚定式气泡：纵向平铺可选数值（窄、右对齐、选中蓝色圆角、动画 + 阴影） */
-@Composable
-private fun SettingValuePopup(
-    title: String,
-    desc: String,
-    options: List<String>,
-    selected: String,
-    onSelect: (String) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val enter = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        enter.animateTo(1f, tween(200, easing = FastOutSlowInEasing))
-    }
-    val p = enter.value
-    Popup(
-        alignment = Alignment.TopEnd,
-        onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true),
-    ) {
-        Card(
-            modifier = Modifier
-                .width(110.dp)
-                .padding(top = 130.dp, end = 16.dp)
-                .shadow(12.dp, RoundedCornerShape(14.dp), clip = false)
-                .graphicsLayer {
-                    alpha = p
-                    scaleX = 0.92f + 0.08f * p
-                    scaleY = 0.92f + 0.08f * p
-                },
-            cornerRadius = 14.dp,
-            insideMargin = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
+        // 横向数值选择：滑出动画
+        AnimatedVisibility(
+            visible = expanded,
+            enter = fadeIn(tween(180)) + expandVertically(tween(220)),
+            exit = fadeOut(tween(120)) + shrinkVertically(tween(160)),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 options.forEach { opt ->
-                    val isSel = opt == selected
+                    val isSel = opt == value
                     Box(
                         Modifier
-                            .fillMaxWidth()
+                            .weight(1f)
                             .clip(RoundedCornerShape(10.dp))
                             .background(
                                 if (isSel) MiuixTheme.colorScheme.primary.copy(alpha = 0.2f)
-                                else Color.Transparent,
-                            ),
+                                else MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.08f),
+                            )
+                            .clickable(onClick = { onSelect(opt) })
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        TextButton(
+                        Text(
                             text = opt,
-                            onClick = { onSelect(opt) },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = if (isSel) {
-                                ButtonDefaults.textButtonColors(
-                                    textColor = MiuixTheme.colorScheme.primary,
-                                )
-                            } else {
-                                ButtonDefaults.textButtonColors()
-                            },
+                            fontSize = 13.sp,
+                            fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (isSel) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
                         )
                     }
                 }
@@ -384,13 +320,13 @@ private fun SettingValuePopup(
     }
 }
 
-/** 关于页（占位，后续完善） */
+/** 致谢页：本项目参考的开源项目 */
 @Composable
 fun AboutPlaceholderScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = "关于",
+                title = "致谢",
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -404,26 +340,66 @@ fun AboutPlaceholderScreen(onBack: () -> Unit) {
             )
         },
     ) { padding ->
-        Box(
-            Modifier
+        LazyColumn(
+            modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
-            contentAlignment = Alignment.Center,
+                .padding(padding)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            item {
                 Text(
-                    text = "去你妈的e网通",
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface,
-                )
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    text = "关于页面建设中，敬请期待",
+                    text = "感谢以下开源项目，让本项目成为可能：",
                     fontSize = 13.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 )
             }
+            item {
+                CreditCard(name = "EWT-TOOL", url = "https://github.com/ZZ0YY/EWT-TOOL")
+            }
+            item {
+                CreditCard(name = "GetEWTAnswers", url = "https://github.com/zhicheng233/GetEWTAnswers/")
+            }
+            item {
+                CreditCard(name = "ewt360-brush", url = "https://github.com/Zxxaq1478359473/ewt360-brush")
+            }
+            item {
+                CreditCard(name = "miuix", url = "https://github.com/compose-miuix-ui/miuix")
+            }
+            // GitHub 图标
+            item {
+                Icon(
+                    imageVector = MiuixIcons.Basic.Github,
+                    contentDescription = "GitHub",
+                    tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .align(Alignment.CenterHorizontally),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CreditCard(name: String, url: String) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        Column {
+            Text(
+                text = name,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = MiuixTheme.colorScheme.onSurface,
+            )
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = url,
+                fontSize = 12.sp,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
         }
     }
 }
