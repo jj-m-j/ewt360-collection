@@ -1,6 +1,9 @@
 package com.ewt.answer.ui
 
 import android.content.Intent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -28,12 +32,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -117,7 +123,7 @@ fun AboutScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "Fuck Ewt · v1.0.0 · MIUIX 风格 · 答案与解析来自 EWT360 官方接口",
+                            text = "Fuck Ewt · build ${versionName(context)} · MIUIX 风格 · 答案与解析来自 EWT360 官方接口",
                             fontSize = 12.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
@@ -315,7 +321,7 @@ private fun SettingParamRow(
     }
 }
 
-/** 锚定式气泡：纵向平铺可选数值（小号、选中蓝色、统一圆角、阴影） */
+/** 锚定式气泡：纵向平铺可选数值（窄、只显示数值、选中蓝色、动画 + 阴影） */
 @Composable
 private fun SettingValuePopup(
     title: String,
@@ -325,6 +331,11 @@ private fun SettingValuePopup(
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val enter = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        enter.animateTo(1f, tween(200, easing = FastOutSlowInEasing))
+    }
+    val p = enter.value
     Popup(
         alignment = Alignment.TopCenter,
         onDismissRequest = onDismiss,
@@ -332,25 +343,17 @@ private fun SettingValuePopup(
     ) {
         Card(
             modifier = Modifier
-                .width(200.dp)
-                .padding(top = 130.dp),
+                .width(120.dp)
+                .padding(top = 130.dp)
+                .graphicsLayer {
+                    alpha = p
+                    scaleX = 0.92f + 0.08f * p
+                    scaleY = 0.92f + 0.08f * p
+                },
             cornerRadius = 16.dp,
-            insideMargin = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            insideMargin = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = title,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = desc,
-                    fontSize = 10.sp,
-                    lineHeight = 13.sp,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                )
-                Spacer(Modifier.padding(top = 4.dp))
                 options.forEach { opt ->
                     val isSel = opt == selected
                     Box(
@@ -358,7 +361,7 @@ private fun SettingValuePopup(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
                             .background(
-                                if (isSel) MiuixTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                if (isSel) MiuixTheme.colorScheme.primary.copy(alpha = 0.2f)
                                 else Color.Transparent,
                             ),
                     ) {
@@ -366,6 +369,13 @@ private fun SettingValuePopup(
                             text = opt,
                             onClick = { onSelect(opt) },
                             modifier = Modifier.fillMaxWidth(),
+                            colors = if (isSel) {
+                                ButtonDefaults.textButtonColors(
+                                    contentColor = MiuixTheme.colorScheme.primary,
+                                )
+                            } else {
+                                ButtonDefaults.textButtonColors()
+                            },
                         )
                     }
                 }
@@ -373,6 +383,12 @@ private fun SettingValuePopup(
         }
     }
 }
+
+/** 读取当前构建号（versionName） */
+private fun versionName(context: android.content.Context): String =
+    runCatching {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
+    }.getOrDefault("1.0.0")
 
 /** 关于页（占位，后续完善） */
 @Composable
