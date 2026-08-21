@@ -16,6 +16,7 @@
 - [GetEWTAnswers](https://github.com/zhicheng233/GetEWTAnswers/)
 - [ewt360-brush](https://github.com/Zxxaq1478359473/ewt360-brush)
 - [miuix](https://github.com/compose-miuix-ui/miuix)
+- [AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass)
 
 ## ✨ 功能
 
