@@ -8,14 +8,14 @@
 
 ---
 
-## 🧩 聚合了什么
+## 🙏 致谢
 
-| 能力 | 来源项目 | 在本项目的形态 |
-|---|---|---|
-| 试卷扫描 / 答案查询 | [EWT-TOOL](https://github.com/ZZ0YY/EWT-TOOL) | 原生 Repository 实现（作业列表 → 题目 → 逐题答案） |
-| 一键刷今日 / 交卷自批 | [GetEWTAnswers](https://github.com/zhicheng233/GetEWTAnswers/) | 选日期批量刷卷：取答案 → 提交 → 交卷 → 自批 |
-| 课程刷课（竞态爆发） | [ewt360-brush](https://github.com/Zxxaq1478359473/ewt360-brush) | Chaquopy 内嵌 Python 脚本：N 路并行 + 竞态爆发 + WAF 冷却 |
-| MIUIX 风格 UI | [miuix](https://github.com/compose-miuix-ui/miuix) | 全套 Compose 组件：液态玻璃底栏、三条杠 Morph 弹层 |
+本项目聚合了以下开源项目，衷心感谢原作者：
+
+- [EWT-TOOL](https://github.com/ZZ0YY/EWT-TOOL)
+- [GetEWTAnswers](https://github.com/zhicheng233/GetEWTAnswers/)
+- [ewt360-brush](https://github.com/Zxxaq1478359473/ewt360-brush)
+- [miuix](https://github.com/compose-miuix-ui/miuix)
 
 ## ✨ 功能
 
@@ -58,15 +58,6 @@ GitHub Actions 已配置：push 到 `main` 自动构建并发布 nightly Release
 ## ⬇️ 下载
 
 前往 [Releases](https://github.com/jj-m-j/ewt360-collection/releases) 下载最新 APK。
-
-## 🙏 致谢
-
-本项目聚合了以下开源项目，衷心感谢原作者：
-
-- [EWT-TOOL](https://github.com/ZZ0YY/EWT-TOOL) — 答案查询
-- [GetEWTAnswers](https://github.com/zhicheng233/GetEWTAnswers/) — 一键刷卷
-- [ewt360-brush](https://github.com/Zxxaq1478359473/ewt360-brush) — 课程刷课
-- [miuix](https://github.com/compose-miuix-ui/miuix) — MIUIX 风格 UI
 
 ## 📝 免责声明
 
