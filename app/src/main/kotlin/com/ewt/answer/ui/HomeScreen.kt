@@ -263,7 +263,8 @@ fun HomeScreen(
                                 EmptyHint("当前筛选 / 搜索条件下没有任务")
                             }
                         } else {
-                            dateGroups.forEachIndexed { idx, (date, papers) ->
+                            // 第一个日期标题右侧放三条杠（☰ 与课程页一致）
+                            dateGroups.entries.forEachIndexed { idx, (date, papers) ->
                                 item(key = "date_$date") {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -273,7 +274,6 @@ fun HomeScreen(
                                             text = if (date == "其他") "未分类" else date,
                                             modifier = Modifier.weight(1f),
                                         )
-                                        // 三条杠：与第一个日期标题同排（右侧），样式与课程页一致（☰）
                                         if (idx == 0) {
                                             FilterRow(
                                                 dateFilter = dateFilter,
