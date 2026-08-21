@@ -1,5 +1,7 @@
 package com.ewt.answer.ui
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -33,7 +35,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -344,13 +345,33 @@ private fun versionName(context: android.content.Context): String =
         context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.0.0"
     }.getOrDefault("1.0.0")
 
-/** 致谢页：本项目参考的开源项目 */
+/** 致谢页：主标题 + GitHub 图标，四个开源项目点击跳转 */
 @Composable
 fun AboutPlaceholderScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
     Scaffold(
         topBar = {
             TopAppBar(
-                title = "致谢",
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = "致谢",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MiuixTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        // GitHub 图标：小尺寸，紧贴主标题后
+                        Icon(
+                            imageVector = GithubLogo,
+                            contentDescription = "GitHub",
+                            tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -373,56 +394,76 @@ fun AboutPlaceholderScreen(onBack: () -> Unit) {
         ) {
             item {
                 Text(
-                    text = "感谢以下开源项目，让本项目成为可能：",
+                    text = "感谢以下开源项目，让本项目成为可能（点击跳转 GitHub）：",
                     fontSize = 13.sp,
                     color = MiuixTheme.colorScheme.onSurfaceSecondary,
                 )
             }
             item {
-                CreditCard(name = "EWT-TOOL", url = "https://github.com/ZZ0YY/EWT-TOOL")
+                CreditCard(
+                    name = "EWT-TOOL",
+                    url = "https://github.com/ZZ0YY/EWT-TOOL",
+                    onClick = { openUrl(context, "https://github.com/ZZ0YY/EWT-TOOL") },
+                )
             }
             item {
-                CreditCard(name = "GetEWTAnswers", url = "https://github.com/zhicheng233/GetEWTAnswers/")
+                CreditCard(
+                    name = "GetEWTAnswers",
+                    url = "https://github.com/zhicheng233/GetEWTAnswers/",
+                    onClick = { openUrl(context, "https://github.com/zhicheng233/GetEWTAnswers/") },
+                )
             }
             item {
-                CreditCard(name = "ewt360-brush", url = "https://github.com/Zxxaq1478359473/ewt360-brush")
+                CreditCard(
+                    name = "ewt360-brush",
+                    url = "https://github.com/Zxxaq1478359473/ewt360-brush",
+                    onClick = { openUrl(context, "https://github.com/Zxxaq1478359473/ewt360-brush") },
+                )
             }
             item {
-                CreditCard(name = "miuix", url = "https://github.com/compose-miuix-ui/miuix")
-            }
-            // GitHub 图标（官方 svg path，居中显示）
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = GithubLogo,
-                        contentDescription = "GitHub",
-                        tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                        modifier = Modifier.size(28.dp),
-                    )
-                }
+                CreditCard(
+                    name = "miuix",
+                    url = "https://github.com/compose-miuix-ui/miuix",
+                    onClick = { openUrl(context, "https://github.com/compose-miuix-ui/miuix") },
+                )
             }
         }
     }
 }
 
+private fun openUrl(context: android.content.Context, url: String) {
+    runCatching {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        context.startActivity(intent)
+    }
+}
+
 @Composable
-private fun CreditCard(name: String, url: String) {
+private fun CreditCard(
+    name: String,
+    url: String,
+    onClick: () -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         insideMargin = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+        onClick = onClick,
     ) {
         Column {
-            Text(
-                text = name,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                color = MiuixTheme.colorScheme.onSurface,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = name,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    imageVector = MiuixIcons.Basic.ArrowRight,
+                    contentDescription = "跳转",
+                    tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                )
+            }
             Spacer(Modifier.height(3.dp))
             Text(
                 text = url,
