@@ -2,11 +2,17 @@ package com.ewt.answer.ui
 
 import android.os.Handler
 import android.os.Looper
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -78,7 +85,7 @@ private enum class LogAction { Detail, Clear }
 
 /**
  * 课程页：Python 刷课（Chaquopy 内嵌 ewt_brush_v2）。
- * 自动读取主 App 已登录 token；可扫描未刷课程并点击单个刷取；开始/暂停；日志固定框内滚动。
+ * 自动读取主 App 已登录 token；可扫描未刷课程（长按多选批量刷）、开始/暂停；日志固定框内滚动。
  */
 @Composable
 fun CourseBrushScreen(
@@ -99,6 +106,9 @@ fun CourseBrushScreen(
     var tasks by remember { mutableStateOf<List<BrushTask>?>(CourseState.tasks) }
     var scanning by remember { mutableStateOf(false) }
     var selectedLesson by remember { mutableStateOf<String?>(CourseState.selectedLesson) }
+    // 多选模式
+    var selectMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     val pauseFile = remember { File(context.filesDir, "pause.flag") }
 
     // 自动获取主 App 已登录 token（不显示明文）
@@ -143,6 +153,56 @@ fun CourseBrushScreen(
     LaunchedEffect(tasks) { CourseState.tasks = tasks }
     LaunchedEffect(selectedLesson) { CourseState.selectedLesson = selectedLesson }
     LaunchedEffect(showDetail) { CourseState.showDetail = showDetail }
+
+    /** 批量刷：选中的课程依次刷取 */
+    fun brushSelected() {
+        if (running || selectedIds.isEmpty()) return
+        val token = AppContainer.tokenStore.load()
+        val queue = (tasks ?: emptyList()).filter { it.lessonId in selectedIds }
+        running = true
+        paused = false
+        pauseFile.delete()
+        thread {
+            try {
+                val py = Python.getInstance()
+                val mod = py.getModule("brush_app")
+                val logPath = logFile.absolutePath
+                queue.forEachIndexed { i, t ->
+                    if (pauseFile.exists()) {
+                        // 暂停等待
+                        while (pauseFile.exists()) {
+                            Thread.sleep(500)
+                        }
+                    }
+                    handler.post {
+                        logText += "\n▶ 队列 ${i + 1}/${queue.size}：${t.title}\n"
+                    }
+                    val ret: Int = if (!token.isNullOrBlank()) {
+                        mod.callAttr(
+                            "run_brush_token", logPath, token, "", "", "",
+                            t.lessonId, settings.concurrency, settings.qps, dryRun, settings.burst,
+                        ).toInt()
+                    } else {
+                        mod.callAttr(
+                            "run_brush", logPath, "", "", "",
+                            settings.concurrency, settings.qps, dryRun, settings.burst,
+                        ).toInt()
+                    }
+                    handler.post { logText += "\n==== ${t.title} 结束，返回码 $ret ====\n" }
+                }
+            } catch (e: Throwable) {
+                handler.post { logText += "\n==== 调用异常: ${e.javaClass.simpleName}: ${e.message} ====\n" }
+            } finally {
+                running = false
+                paused = false
+                pauseFile.delete()
+                handler.post {
+                    selectMode = false
+                    selectedIds = emptySet()
+                }
+            }
+        }
+    }
 
     fun runPy(fn: String, task: BrushTask? = null) {
         if (running) return
@@ -303,7 +363,7 @@ fun CourseBrushScreen(
                     )
                 }
             }
-            // 未刷课程列表
+            // 未刷课程列表（进场动画 + 长按多选）
             tasks?.let { list ->
                 if (list.isEmpty()) {
                     item(key = "no_tasks") {
@@ -316,45 +376,134 @@ fun CourseBrushScreen(
                     }
                 } else {
                     item(key = "task_title") {
-                        SmallTitle(text = "未刷课程（${list.size}）")
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            SmallTitle(text = "未刷课程（${list.size}）")
+                            Spacer(Modifier.weight(1f))
+                            if (selectMode) {
+                                TextButton(
+                                    text = "全选",
+                                    onClick = {
+                                        selectedIds = list.map { it.lessonId }.toSet()
+                                    },
+                                )
+                            }
+                        }
                     }
-                    list.forEach { t ->
+                    list.forEachIndexed { index, t ->
                         item(key = "task_${t.lessonId}") {
                             val isSel = selectedLesson == t.lessonId
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 2.dp),
-                                insideMargin = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                                onClick = {
-                                    selectedLesson = t.lessonId
-                                    runPy("brush", t)
-                                },
+                            val isChecked = t.lessonId in selectedIds
+                            // 进场动画
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = fadeIn(tween(200)) + slideInVertically(tween(250)) { it / 2 },
+                            ) {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 2.dp),
+                                    insideMargin = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                    onClick = {
+                                        if (selectMode) {
+                                            selectedIds = if (isChecked) selectedIds - t.lessonId else selectedIds + t.lessonId
+                                        } else {
+                                            selectedLesson = t.lessonId
+                                            runPy("brush", t)
+                                        }
+                                    },
+                                    onLongClick = {
+                                        // 长按进入多选
+                                        selectMode = true
+                                        selectedIds = setOf(t.lessonId)
+                                    },
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        // 多选模式：左侧勾选指示
+                                        if (selectMode) {
+                                            Box(
+                                                Modifier
+                                                    .size(20.dp)
+                                                    .clip(RoundedCornerShape(10.dp))
+                                                    .background(
+                                                        if (isChecked) MiuixTheme.colorScheme.primary
+                                                        else MiuixTheme.colorScheme.onSurfaceVariantActions.copy(alpha = 0.2f),
+                                                    ),
+                                                contentAlignment = Alignment.Center,
+                                            ) {
+                                                if (isChecked) {
+                                                    Text(
+                                                        text = "✓",
+                                                        fontSize = 12.sp,
+                                                        color = MiuixTheme.colorScheme.onPrimary,
+                                                    )
+                                                }
+                                            }
+                                            Spacer(Modifier.width(10.dp))
+                                        }
+                                        Column(Modifier.weight(1f)) {
+                                            Text(
+                                                text = t.title,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                color = if (isSel || isChecked) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                            )
+                                            Spacer(Modifier.height(2.dp))
+                                            Text(
+                                                text = "${t.subject} · ${t.duration / 60}min",
+                                                fontSize = 11.sp,
+                                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                                            )
+                                        }
+                                        if (isSel && !selectMode) {
+                                            Text(
+                                                text = "刷课中…",
+                                                fontSize = 11.sp,
+                                                color = MiuixTheme.colorScheme.primary,
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // 多选操作栏
+                    if (selectMode) {
+                        item(key = "select_bar") {
+                            AnimatedVisibility(
+                                visible = true,
+                                enter = fadeIn(tween(200)) + slideInVertically(tween(220)) { it },
+                                exit = fadeOut(tween(120)) + slideOutVertically(tween(160)) { it },
                             ) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                                 ) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text(
-                                            text = t.title,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = if (isSel) MiuixTheme.colorScheme.primary else MiuixTheme.colorScheme.onSurface,
-                                            maxLines = 1,
-                                        )
-                                        Spacer(Modifier.height(2.dp))
-                                        Text(
-                                            text = "${t.subject} · ${t.duration / 60}min",
-                                            fontSize = 11.sp,
-                                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                                        )
-                                    }
-                                    if (isSel) {
-                                        Text(
-                                            text = "刷课中…",
-                                            fontSize = 11.sp,
+                                    TextButton(
+                                        text = "取消",
+                                        onClick = {
+                                            selectMode = false
+                                            selectedIds = emptySet()
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    Button(
+                                        onClick = { brushSelected() },
+                                        enabled = selectedIds.isNotEmpty() && !running,
+                                        colors = ButtonDefaults.buttonColors(
                                             color = MiuixTheme.colorScheme.primary,
+                                            contentColor = MiuixTheme.colorScheme.onPrimary,
+                                        ),
+                                        modifier = Modifier.weight(2f),
+                                    ) {
+                                        Text(
+                                            text = "刷选中（${selectedIds.size}）",
+                                            fontSize = 14.sp,
                                         )
                                     }
                                 }
@@ -467,7 +616,7 @@ fun CourseBrushScreen(
     }
 }
 
-/** 日志菜单：三条杠弹出（Detail 切换 / 清空），纯文字 + 分割线 */
+/** 日志菜单：三条杠弹出（Detail 切换 / 清空），纯文字 + 分割线 + 原生阴影 */
 @Composable
 private fun LogMenuPopup(
     showDetail: Boolean,
@@ -489,6 +638,7 @@ private fun LogMenuPopup(
         Card(
             modifier = Modifier
                 .width(140.dp)
+                .shadow(16.dp, RoundedCornerShape(16.dp), clip = false)
                 .graphicsLayer {
                     alpha = p
                     scaleX = 0.94f + 0.06f * p
