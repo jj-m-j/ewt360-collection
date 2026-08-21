@@ -61,8 +61,6 @@ import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.io.File
 import java.io.RandomAccessFile
-import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /** 未刷课时条目 */
@@ -77,7 +75,7 @@ data class BrushTask(
 /**
  * 课程页：Python 刷课（Chaquopy 内嵌 ewt_brush_v2）。
  * 通过「刷指定课程」二级页选择队列；开始/暂停；日志固定框内滚动。
- * 队列刷：按设置的总并发路数拆分到各课程并行（总并发不超设置值）。
+ * 队列刷：lesson_filter 逗号分隔多值，脚本内部按 concurrency 批量并行刷多课。
  */
 @Composable
 fun CourseBrushScreen(
@@ -145,60 +143,40 @@ fun CourseBrushScreen(
     LaunchedEffect(showDetail) { CourseState.showDetail = showDetail }
 
     /**
-     * 批量刷队列：按设置的总并发路数拆分到各课程并行。
-     * 例：concurrency=6、队列 2 课 → 2 课并行，每课 3 路，总并发仍 6。
+     * 批量刷队列：一次性传逗号分隔的 lessonId 给脚本，脚本内部按 concurrency 批量并行刷多课。
+     * 并发路数 = 设置值（每批 gather 多个课时同时刷），每课内部还有 burst 爆发加速。
      */
     fun brushQueue(queue: List<BrushTask>) {
         if (running || queue.isEmpty()) return
         val token = AppContainer.tokenStore.load()
-        val totalConcurrency = settings.concurrency.coerceAtLeast(1)
-        // 并行课程数 = min(总并发路数, 队列课程数)
-        val parallelLessons = totalConcurrency.coerceIn(1, queue.size)
-        // 每课内并发 = 总并发 / 并行课数（至少 1 路）
-        val perLesson = (totalConcurrency / parallelLessons).coerceAtLeast(1)
-
+        // 逗号分隔多值 lesson_filter（脚本已支持），脚本自身 batch 并行
+        val lessonFilter = queue.joinToString(",") { it.lessonId }
         running = true
         paused = false
         pauseFile.delete()
         handler.post {
-            logText += "\n▶ 并行刷 ${queue.size} 课（${parallelLessons} 课并行 × 每课 $perLesson 路）\n"
+            logText += "\n▶ 并行刷 ${queue.size} 个课时（并发路数 ${settings.concurrency}，脚本内 batch 并行）\n"
         }
         thread {
-            val executor = Executors.newFixedThreadPool(parallelLessons)
             try {
                 val py = Python.getInstance()
                 val mod = py.getModule("brush_app")
                 val logPath = logFile.absolutePath
-                val futures = queue.map { t ->
-                    executor.submit {
-                        // 暂停检查
-                        while (pauseFile.exists()) {
-                            Thread.sleep(500)
-                        }
-                        handler.post {
-                            logText += "\n▶ [${t.title}] 开始（每课 $perLesson 路并发）\n"
-                        }
-                        val ret: Int = if (!token.isNullOrBlank()) {
-                            mod.callAttr(
-                                "run_brush_token", logPath, token, "", "", "",
-                                t.lessonId, perLesson, settings.qps, false, settings.burst,
-                            ).toInt()
-                        } else {
-                            mod.callAttr(
-                                "run_brush", logPath, "", "", "",
-                                perLesson, settings.qps, false, settings.burst,
-                            ).toInt()
-                        }
-                        handler.post { logText += "\n==== ${t.title} 结束，返回码 $ret ====\n" }
-                    }
+                val ret: Int = if (!token.isNullOrBlank()) {
+                    mod.callAttr(
+                        "run_brush_token", logPath, token, "", "", lessonFilter,
+                        settings.concurrency, settings.qps, false, settings.burst,
+                    ).toInt()
+                } else {
+                    mod.callAttr(
+                        "run_brush", logPath, "", "", lessonFilter,
+                        settings.concurrency, settings.qps, false, settings.burst,
+                    ).toInt()
                 }
-                // 等待全部课程完成
-                futures.forEach { it.get() }
+                handler.post { logText += "\n==== 队列刷结束，返回码 $ret ====\n" }
             } catch (e: Throwable) {
                 handler.post { logText += "\n==== 调用异常: ${e.javaClass.simpleName}: ${e.message} ====\n" }
             } finally {
-                executor.shutdown()
-                runCatching { executor.awaitTermination(5, TimeUnit.SECONDS) }
                 running = false
                 paused = false
                 pauseFile.delete()
@@ -221,7 +199,7 @@ fun CourseBrushScreen(
                 val ret: Int = if (!token.isNullOrBlank()) {
                     mod.callAttr(
                         "run_brush_token", logPath, token, "", "", "",
-                        "", settings.concurrency, settings.qps, false, settings.burst,
+                        settings.concurrency, settings.qps, false, settings.burst,
                     ).toInt()
                 } else {
                     mod.callAttr(
