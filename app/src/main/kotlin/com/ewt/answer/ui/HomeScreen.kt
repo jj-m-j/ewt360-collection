@@ -547,6 +547,7 @@ private fun FilterPopupCard(
                             range = 0..dateOptions.lastIndex,
                             label = { dateOptions[it] ?: "全部" },
                             textStyle = MiuixTheme.textStyles.body1,
+                            itemHeight = 30.dp,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Spacer(Modifier.height(8.dp))
@@ -585,6 +586,7 @@ private fun FilterPopupCard(
                             range = 0..subjectOptions.lastIndex,
                             label = { subjectOptions[it] ?: "全部" },
                             textStyle = MiuixTheme.textStyles.body1,
+                            itemHeight = 30.dp,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Spacer(Modifier.height(8.dp))
@@ -746,7 +748,7 @@ private fun BrushTodayEntry(
     }
 }
 
-/** 刷今日：日期滚轮选择对话框（按钮一左一右） */
+/** 刷今日：日期滚轮选择对话框（按钮一左一右 + 滚轮间距收紧） */
 @Composable
 private fun BrushDateDialog(
     dateOptions: List<String>,
@@ -768,6 +770,7 @@ private fun BrushDateDialog(
                 range = 0..dateOptions.lastIndex,
                 label = { dateOptions[it] },
                 textStyle = MiuixTheme.textStyles.body1,
+                itemHeight = 30.dp,
                 modifier = Modifier.fillMaxWidth(),
             )
             Spacer(Modifier.height(16.dp))
