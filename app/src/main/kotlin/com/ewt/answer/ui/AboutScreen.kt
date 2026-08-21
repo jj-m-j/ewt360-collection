@@ -191,7 +191,7 @@ fun AboutScreen(
             item(key = "brush_concurrency") {
                 SettingParamRow(
                     label = "并行路数",
-                    desc = "单个课时内同时开启的并发上报路数（用并发冗余加速播放进度累加，不是同时刷的课时数）。越大越快，但过快易触发风控；默认 6，稳妥可降到 1–2。",
+                    desc = "每批最多同时刷几个课时（如并发 6 选 2 课 → 2 课同时刷；选 10 课 → 分批 6+4）。越大越快，但过快易触发风控；默认 6，稳妥可降到 1–2。",
                     value = brushSettings.concurrency,
                     expanded = expandedParam == "concurrency",
                     options = listOf("1", "2", "4", "6", "8", "12"),
@@ -203,7 +203,7 @@ fun AboutScreen(
             item(key = "brush_qps") {
                 SettingParamRow(
                     label = "QPS",
-                    desc = "网关全局限速（请求/分钟）。配合并行路数，防 429 风控拦截；默认 150，网络稳可升到 300–400。",
+                    desc = "网关全局限速（请求/分钟），所有课时与并发路数共用。配合并行路数防 429 风控拦截；默认 150，网络稳可升到 300–400。",
                     value = brushSettings.qps,
                     expanded = expandedParam == "qps",
                     options = listOf("50", "100", "150", "200", "300", "400"),
@@ -215,7 +215,7 @@ fun AboutScreen(
             item(key = "brush_burst") {
                 SettingParamRow(
                     label = "爆发",
-                    desc = "单课时竞态爆发并发路数，在并行路数之上额外拉起请求，进一步加速进度累加；默认 8，过高易触发 WAF。",
+                    desc = "单个课时内的竞态并发路数：刷一个课时时同时开 N 路上报播放进度，用并发冗余加速累加（等效约 5 倍速）。默认 8，过高易触发 WAF。",
                     value = brushSettings.burst,
                     expanded = expandedParam == "burst",
                     options = listOf("4", "6", "8", "12", "16"),
