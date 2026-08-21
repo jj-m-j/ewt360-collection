@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -56,7 +57,7 @@ import java.io.File
 
 /**
  * 设置页（底部 Tab）：大标题 miuix 原生排版。
- * 含刷课设置（并行路数 / QPS / 爆发，点击弹锚定气泡）+ 导出详细日志。
+ * 含刷课设置（并行路数 / QPS / 爆发，点击弹锚定气泡）+ 调试模式（含导出日志）。
  */
 @Composable
 fun AboutScreen(
@@ -123,7 +124,7 @@ fun AboutScreen(
                         )
                         Spacer(Modifier.height(4.dp))
                         Text(
-                            text = "Fuck Ewt · v1.0.0 · MIUIX 风格 · 答案与解析来自 EWT360 官方接口",
+                            text = "Fuck Ewt · v1.0.0",
                             fontSize = 12.sp,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
@@ -131,9 +132,6 @@ fun AboutScreen(
                 }
             }
 
-            item(key = "font_title") {
-                SmallTitle("设置")
-            }
             item(key = "font") {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -197,9 +195,26 @@ fun AboutScreen(
                     onClick = { anchor = "burst" },
                 )
             }
+
+            item(key = "about") {
+                ActionCard(
+                    title = "关于",
+                    subtitle = "版本信息 / 项目说明",
+                    onClick = onOpenAbout,
+                )
+            }
+
+            item(key = "debug") {
+                ActionCard(
+                    title = "调试模式",
+                    subtitle = "查看日志 / 导出刷课日志 / 下载字体",
+                    onClick = onOpenDebug,
+                )
+            }
+
             item(key = "export_log") {
                 ActionCard(
-                    title = "导出详细日志",
+                    title = "导出刷课日志",
                     subtitle = "分享 brush.log 完整刷课日志",
                     onClick = {
                         val logFile = File(context.filesDir, "brush.log")
@@ -214,22 +229,6 @@ fun AboutScreen(
                 )
             }
 
-            item(key = "about") {
-                ActionCard(
-                    title = "关于",
-                    subtitle = "版本信息 / 项目说明",
-                    onClick = onOpenAbout,
-                )
-            }
-
-            item(key = "debug") {
-                ActionCard(
-                    title = "调试模式",
-                    subtitle = "查看日志 / 分享日志 / 下载字体",
-                    onClick = onOpenDebug,
-                )
-            }
-
             item(key = "logout") {
                 ActionCard(
                     title = "退出登录",
@@ -240,7 +239,7 @@ fun AboutScreen(
             }
         }
 
-        // 锚定式气泡弹窗：纵向数值列表 + 参数说明（miuix Card 圆角 + 阴影）
+        // 锚定式气泡弹窗：纵向数值列表（窄、右对齐、选中蓝色、动画 + 阴影）
         when (anchor) {
             "concurrency" -> SettingValuePopup(
                 title = "并行路数",
@@ -321,7 +320,7 @@ private fun SettingParamRow(
     }
 }
 
-/** 锚定式气泡：纵向平铺可选数值（窄、只显示数值、选中蓝色、动画 + 阴影） */
+/** 锚定式气泡：纵向平铺可选数值（窄、右对齐、选中蓝色圆角、动画 + 阴影） */
 @Composable
 private fun SettingValuePopup(
     title: String,
@@ -337,21 +336,22 @@ private fun SettingValuePopup(
     }
     val p = enter.value
     Popup(
-        alignment = Alignment.TopCenter,
+        alignment = Alignment.TopEnd,
         onDismissRequest = onDismiss,
         properties = PopupProperties(focusable = true),
     ) {
         Card(
             modifier = Modifier
-                .width(120.dp)
-                .padding(top = 130.dp)
+                .width(110.dp)
+                .padding(top = 130.dp, end = 16.dp)
+                .shadow(12.dp, RoundedCornerShape(14.dp), clip = false)
                 .graphicsLayer {
                     alpha = p
                     scaleX = 0.92f + 0.08f * p
                     scaleY = 0.92f + 0.08f * p
                 },
-            cornerRadius = 16.dp,
-            insideMargin = PaddingValues(horizontal = 6.dp, vertical = 6.dp),
+            cornerRadius = 14.dp,
+            insideMargin = PaddingValues(horizontal = 4.dp, vertical = 4.dp),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 options.forEach { opt ->
